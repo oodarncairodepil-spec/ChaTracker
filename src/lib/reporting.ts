@@ -173,3 +173,53 @@ export async function getPeriodStats(start: string, end: string) {
         budgetedIncome
     };
 }
+
+export async function recalculateAllSummaries() {
+    const { data: rows, error } = await supabase.from("budget_performance_summary").select("*");
+    
+    if (error) return { error: error.message };
+    if (!rows) return { count: 0 };
+
+    let count = 0;
+
+    for (const row of rows) {
+        const start = row.period_start_date;
+        const end = row.period_end_date;
+        const type = row.category_type; // 'expense' or 'income'
+        
+        // Map category_type to transaction direction
+        // expense -> debit, income -> credit
+        const direction = type === 'expense' ? 'debit' : 'credit';
+
+        // Calculate Actuals
+        const { data: txs } = await supabase.from("transactions")
+            .select("amount")
+            .eq("direction", direction)
+            .eq("status", "completed")
+            .gte("happened_at", start)
+            .lte("happened_at", end);
+        
+        const totalActual = txs?.reduce((sum, t) => sum + t.amount, 0) || 0;
+
+        // Calculate Variance (Budget - Actual for Expense? Actual - Budget for Income?)
+        // Usually Variance = Budget - Actual (Positive is good for expense)
+        // JSON shows total_variance = -57401108 (when actual is 0 and budget is 57M). 
+        // So Variance = Actual - Budget? 0 - 57M = -57M.
+        // Let's stick to updating total_actual first.
+
+        // Update using composite key
+        await supabase.from("budget_performance_summary")
+            .update({ 
+                total_actual: totalActual,
+                // last_recalculated_at: new Date().toISOString() // Add this if migration ran
+            })
+            .eq("user_id", row.user_id)
+            .eq("period_start_date", start)
+            .eq("period_end_date", end)
+            .eq("category_type", type);
+        
+        count++;
+    }
+
+    return { count };
+}

@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery } from "@/utils/telegram";
-import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats } from "@/lib/reporting";
+import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
@@ -76,6 +76,14 @@ async function handleCommand(chatId: number, text: string, session: any) {
       await showToday(chatId);
     } else if (command === "/period") {
       await showPeriodMenu(chatId);
+    } else if (command === "/recalculate") {
+      await sendTelegramMessage(chatId, "⏳ Recalculating budget summaries... this may take a moment.");
+      const result: any = await recalculateAllSummaries();
+      if (result.error) {
+          await sendTelegramMessage(chatId, `⚠️ Error: ${result.error}`);
+      } else {
+          await sendTelegramMessage(chatId, `✅ Done! Updated ${result.count} summary rows.`);
+      }
     } else {
       await sendTelegramMessage(chatId, "Unknown command.");
     }
