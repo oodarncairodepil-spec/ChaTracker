@@ -278,42 +278,35 @@ export async function recalculateAllSummaries() {
 
 export async function getTransactionsForPeriod(start: string, end: string, type: 'expense' | 'income', page: number = 0) {
     const PAGE_SIZE = 10;
-    const from = page * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-
-    // Filter by type logic
-    // Expense: direction=debit OR type=expense
-    // Income: direction=credit OR type=income
     
-    // Supabase OR syntax: .or(`direction.eq.debit,type.eq.expense`)
-    // But we also need date and status filter.
-    // .and(`status.in.(completed,paid),date.gte.${start},date.lte.${end}`)
-    
-    // Combining complex OR with AND in Supabase JS client can be tricky.
-    // Easier way: fetch filtered by date/status, then filter by type in JS (if page size is small enough?)
-    // No, pagination needs DB filter.
-    
-    let orQuery = "";
-    if (type === 'expense') {
-        orQuery = `direction.eq.debit,type.eq.expense`;
-    } else {
-        orQuery = `direction.eq.credit,type.eq.income`;
-    }
-
-    const { data: txs, count, error } = await supabase
+    // Fetch ALL matching transactions for the period (without pagination first)
+    // We filter by type in JS to avoid complex OR logic in Supabase which might fail
+    const { data: allTxs, error } = await supabase
         .from("transactions")
-        .select("*, source_of_funds(name)", { count: 'exact' })
+        .select("*, source_of_funds(name)")
         .in("status", ["completed", "paid"])
         .gte("date", start)
         .lte("date", end)
-        .or(orQuery)
-        .order("date", { ascending: false })
-        .range(from, to);
+        .order("date", { ascending: false });
 
     if (error) {
         console.error("Error fetching txs:", error);
         return { txs: [], total: 0 };
     }
 
-    return { txs: txs || [], total: count || 0 };
+    // Filter in memory
+    const filteredTxs = (allTxs || []).filter((t: any) => {
+        if (type === 'expense') {
+            return t.direction === 'debit' || t.type === 'expense';
+        } else {
+            return t.direction === 'credit' || t.type === 'income';
+        }
+    });
+
+    const total = filteredTxs.length;
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE;
+    const paginatedTxs = filteredTxs.slice(from, to);
+
+    return { txs: paginatedTxs, total };
 }
