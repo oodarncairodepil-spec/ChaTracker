@@ -107,8 +107,12 @@ async function showPeriodSummary(chatId: number) {
 📊 <b>Tracker Period Summary</b>
 📅 ${startStr} - ${endStr}
 
-💸 <b>Total Expense:</b> Rp ${fmt.format(summary.totalExpense)}
-💰 <b>Total Income:</b> Rp ${fmt.format(summary.totalIncome)}
+💸 <b>Expense:</b> Rp ${fmt.format(summary.totalExpense)}
+   <i>(Budget: Rp ${fmt.format(summary.budgetedExpense)})</i>
+
+💰 <b>Income:</b> Rp ${fmt.format(summary.totalIncome)}
+   <i>(Budget: Rp ${fmt.format(summary.budgetedIncome)})</i>
+
 📉 <b>Net Flow:</b> Rp ${fmt.format(summary.net)}
 `;
 

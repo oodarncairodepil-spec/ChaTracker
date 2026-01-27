@@ -123,6 +123,22 @@ export async function getTrackerPeriodSummary() {
         return { error: `Transaction query failed: ${txError.message}` };
     }
 
+    // 3. Get Budgeted amounts from summary table for this period
+    const { data: budgetData } = await supabase
+        .from("budget_performance_summary")
+        .select("category_type, total_budgeted")
+        .eq("period_start_date", start)
+        .eq("period_end_date", end);
+
+    let budgetedExpense = 0;
+    let budgetedIncome = 0;
+
+    budgetData?.forEach((row: any) => {
+        const amount = parseFloat(row.total_budgeted || "0");
+        if (row.category_type === 'expense') budgetedExpense += amount;
+        if (row.category_type === 'income') budgetedIncome += amount;
+    });
+
     let totalExpense = 0;
     let totalIncome = 0;
 
@@ -139,6 +155,8 @@ export async function getTrackerPeriodSummary() {
         end: new Date(end),
         totalExpense,
         totalIncome,
-        net: totalIncome - totalExpense
+        net: totalIncome - totalExpense,
+        budgetedExpense,
+        budgetedIncome
     };
 }
