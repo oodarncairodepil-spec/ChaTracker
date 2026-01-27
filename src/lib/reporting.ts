@@ -294,7 +294,17 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
     }
 
     // Fetch Source of Funds map
-    const { data: sources } = await supabase.from("source_of_funds").select("id, name");
+    let { data: sources, error: sourceError } = await supabase.from("source_of_funds").select("id, name");
+    
+    // Fallback: Try 'funds' table if 'source_of_funds' is empty or failed
+    if (sourceError || !sources || sources.length === 0) {
+        const { data: funds } = await supabase.from("funds").select("id, name");
+        if (funds && funds.length > 0) {
+            sources = funds;
+            console.log(`Debug: Switched to 'funds' table. Found ${funds.length} rows.`);
+        }
+    }
+
     const sourceMap = new Map();
     sources?.forEach((s: any) => sourceMap.set(s.id, s.name));
 
