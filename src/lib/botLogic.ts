@@ -1,0 +1,332 @@
+import { supabase } from "@/lib/supabase";
+import { sendTelegramMessage, editMessageText, answerCallbackQuery } from "@/utils/telegram";
+import { getMonthlyReport, getTodaySummary, getTrackerPeriodSummary } from "@/lib/reporting";
+import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
+
+export async function handleUpdate(update: any) {
+  // 1. Callback Query
+  if (update.callback_query) {
+    await handleCallbackQuery(update.callback_query);
+    return;
+  }
+
+  // 2. Message
+  if (update.message) {
+    await handleMessage(update.message);
+    return;
+  }
+}
+
+async function handleMessage(message: any) {
+  const chatId = message.chat.id;
+  const userId = message.from.id;
+  const text = message.text || "";
+
+  // Get or Create Session
+  let { data: session } = await supabase
+    .from("bot_sessions")
+    .select("*")
+    .eq("chat_id", chatId)
+    .eq("user_id", userId)
+    .single();
+
+  if (!session) {
+    const { data: newSession } = await supabase
+      .from("bot_sessions")
+      .insert({ chat_id: chatId, user_id: userId, state: "idle" })
+      .select()
+      .single();
+    session = newSession;
+  }
+
+  // Commands (cancel flow if command)
+  if (text.startsWith("/")) {
+    if (session.state !== "idle") {
+        await updateSession(session.id, "idle", {});
+    }
+    await handleCommand(chatId, text, session);
+    return;
+  }
+
+  // State Machine Input
+  if (session.state !== "idle") {
+    await handleStateInput(chatId, text, session);
+    return;
+  }
+
+  // Default
+  await sendTelegramMessage(chatId, "I didn't understand that. Try /pending, /new, /today, /month or /period.");
+}
+
+async function handleCommand(chatId: number, text: string, session: any) {
+  try {
+    const command = text.split(" ")[0];
+
+    if (command === "/start") {
+      await updateSession(session.id, "idle", {});
+      await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🚀\nWaiting for emails...");
+    } else if (command === "/pending") {
+      await showPendingTransactions(chatId);
+    } else if (command === "/new") {
+      await updateSession(session.id, "await_amount", { type: "manual_entry" });
+      await sendTelegramMessage(chatId, "Enter amount (e.g. 50000):");
+    } else if (command === "/budget" || command === "/month") {
+      await showBudget(chatId);
+    } else if (command === "/today") {
+      await showToday(chatId);
+    } else if (command === "/period") {
+      await sendTelegramMessage(chatId, "Fetching period data..."); // Acknowledge command immediately
+      await showPeriodSummary(chatId);
+    } else {
+      await sendTelegramMessage(chatId, "Unknown command.");
+    }
+  } catch (error: any) {
+    console.error("Command Error:", error);
+    await sendTelegramMessage(chatId, `⚠️ Error processing command: ${error.message}`);
+  }
+}
+
+async function showPeriodSummary(chatId: number) {
+  const summary = await getTrackerPeriodSummary();
+  if (!summary) {
+    await sendTelegramMessage(chatId, "No active tracker period found.");
+    return;
+  }
+
+  const fmt = new Intl.NumberFormat('id-ID');
+  const startStr = summary.start.toLocaleDateString();
+  const endStr = summary.end.toLocaleDateString();
+
+  const msg = `
+📊 <b>Tracker Period Summary</b>
+📅 ${startStr} - ${endStr}
+
+💸 <b>Total Expense:</b> Rp ${fmt.format(summary.totalExpense)}
+💰 <b>Total Income:</b> Rp ${fmt.format(summary.totalIncome)}
+📉 <b>Net Flow:</b> Rp ${fmt.format(summary.net)}
+`;
+
+  await sendTelegramMessage(chatId, msg);
+}
+
+async function handleCallbackQuery(query: any) {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+  const messageId = query.message.message_id;
+
+  // data format: action:id:extra
+  const parts = data.split(":");
+  const action = parts[0];
+  const id = parts[1]; // usually transaction_id
+
+  if (action === "tx_confirm") {
+    // Mark completed
+    await supabase.from("transactions").update({ status: "completed" }).eq("id", id);
+    await editMessageText(chatId, messageId, "✅ Transaction confirmed and saved.");
+    await answerCallbackQuery(query.id, "Confirmed!");
+  } else if (action === "tx_reject") {
+    await supabase.from("transactions").update({ status: "rejected" }).eq("id", id);
+    await editMessageText(chatId, messageId, "❌ Transaction rejected.");
+    await answerCallbackQuery(query.id, "Rejected");
+  } else if (action === "tx_cat") {
+    // Show categories
+    await showCategories(chatId, id);
+    await answerCallbackQuery(query.id);
+  } else if (action === "set_cat") {
+    // set_cat:txId:catId
+    const txId = parts[1];
+    const catId = parts[2];
+    await supabase.from("transactions").update({ category_id: catId }).eq("id", txId);
+    // Ask for subcategory
+    await showSubcategories(chatId, txId, catId);
+    await answerCallbackQuery(query.id);
+  } else if (action === "set_sub") {
+    // set_sub:txId:subId
+    const txId = parts[1];
+    const subId = parts[2]; // could be 'skip'
+    if (subId !== 'skip') {
+      await supabase.from("transactions").update({ subcategory_id: subId }).eq("id", txId);
+    }
+    await supabase.from("transactions").update({ status: "completed" }).eq("id", txId);
+    await editMessageText(chatId, messageId, "✅ Transaction categorized and saved!");
+    await answerCallbackQuery(query.id);
+  } else if (action === "tx_dir") {
+      // Manual entry direction: tx_dir:session_id:debit|credit
+      const sessionId = parts[1];
+      const direction = parts[2];
+      await updateSession(sessionId, "await_merchant", { direction: direction }); // Wait, context needs to merge? No, fetching fresh
+      // We need to retrieve context first to merge, but here we can just pass to next step logic or update DB
+      // Actually handleStateInput is for text, callbacks are here.
+      // We need to update context.
+      const { data: session } = await supabase.from("bot_sessions").select("*").eq("id", sessionId).single();
+      const newContext = { ...session.context, direction };
+      await updateSession(sessionId, "await_merchant", newContext);
+      await sendTelegramMessage(chatId, `Set to ${direction.toUpperCase()}. Now enter Merchant name:`);
+      await answerCallbackQuery(query.id);
+  }
+}
+
+// --- Helpers ---
+
+async function updateSession(id: string, state: string, context: any) {
+  await supabase.from("bot_sessions").update({ state, context }).eq("id", id);
+}
+
+async function showPendingTransactions(chatId: number) {
+  const { data: txs } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("status", "pending")
+    .order("happened_at", { ascending: false })
+    .limit(5);
+
+  if (!txs || txs.length === 0) {
+    await sendTelegramMessage(chatId, "No pending transactions! 🎉");
+    return;
+  }
+
+  for (const tx of txs) {
+    const text = `
+🆕 <b>Pending Transaction</b>
+💰 ${tx.currency} ${new Intl.NumberFormat('id-ID').format(tx.amount)}
+🏪 ${tx.merchant || "Unknown"}
+📅 ${new Date(tx.happened_at).toLocaleDateString()}
+`;
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: "✅ Confirm", callback_data: `tx_confirm:${tx.id}` }],
+        [{ text: "🏷️ Categorize", callback_data: `tx_cat:${tx.id}` }],
+        [{ text: "❌ Reject", callback_data: `tx_reject:${tx.id}` }]
+      ]
+    };
+    await sendTelegramMessage(chatId, text, { reply_markup: keyboard });
+  }
+}
+
+async function showCategories(chatId: number, txId: string) {
+  const categories = await getCategories();
+  if (!categories || categories.length === 0) {
+      await sendTelegramMessage(chatId, "No categories found.");
+      return;
+  }
+
+  const buttons = [];
+  let row = [];
+  for (const c of categories) {
+      row.push({ text: c.name, callback_data: `set_cat:${txId}:${c.id}` });
+      if (row.length === 2) {
+          buttons.push(row);
+          row = [];
+      }
+  }
+  if (row.length > 0) buttons.push(row);
+
+  await sendTelegramMessage(chatId, "Select Category:", {
+    reply_markup: { inline_keyboard: buttons }
+  });
+}
+
+async function showSubcategories(chatId: number, txId: string, catId: string) {
+  const subs = await getSubcategories(catId);
+  
+  const buttons = [];
+  if (subs) {
+      let row = [];
+      for (const s of subs) {
+          row.push({ text: s.name, callback_data: `set_sub:${txId}:${s.id}` });
+          if (row.length === 2) {
+              buttons.push(row);
+              row = [];
+          }
+      }
+      if (row.length > 0) buttons.push(row);
+  }
+  
+  buttons.push([{ text: "Skip Subcategory", callback_data: `set_sub:${txId}:skip` }]);
+
+  await sendTelegramMessage(chatId, "Select Subcategory:", {
+    reply_markup: { inline_keyboard: buttons }
+  });
+}
+
+async function handleStateInput(chatId: number, text: string, session: any) {
+    const state = session.state;
+    const context = session.context;
+
+    if (state === "await_amount") {
+        const amount = parseInt(text.replace(/[^0-9]/g, ""), 10);
+        if (isNaN(amount)) {
+            await sendTelegramMessage(chatId, "Invalid amount. Please enter a number.");
+            return;
+        }
+        const newContext = { ...context, amount };
+        await updateSession(session.id, "await_direction", newContext);
+        
+        // Ask direction with buttons
+        const keyboard = {
+            inline_keyboard: [
+                [{ text: "💸 Expense (Debit)", callback_data: `tx_dir:${session.id}:debit` }],
+                [{ text: "💰 Income (Credit)", callback_data: `tx_dir:${session.id}:credit` }]
+            ]
+        };
+        await sendTelegramMessage(chatId, "Is this an expense or income?", { reply_markup: keyboard });
+    
+    } else if (state === "await_merchant") {
+        const newContext = { ...context, merchant: text };
+        await updateSession(session.id, "await_date", newContext);
+        await sendTelegramMessage(chatId, "Enter date (YYYY-MM-DD) or type 'today':");
+    
+    } else if (state === "await_date") {
+        let date = text.toLowerCase() === "today" ? new Date().toISOString() : text;
+        // Basic validation could go here
+        const newContext = { ...context, happened_at: date };
+        await updateSession(session.id, "saving", newContext);
+        
+        // Save
+        const { error } = await supabase.from("transactions").insert({
+            status: "completed", // Auto complete for manual
+            amount: newContext.amount,
+            direction: newContext.direction,
+            merchant: newContext.merchant,
+            happened_at: newContext.happened_at,
+            source: "manual",
+            currency: "IDR"
+        });
+        
+        if (error) {
+             await sendTelegramMessage(chatId, `Error saving: ${error.message}`);
+        } else {
+             await sendTelegramMessage(chatId, "✅ Transaction saved!");
+        }
+        await updateSession(session.id, "idle", {});
+    }
+}
+
+async function showBudget(chatId: number) {
+    const report = await getMonthlyReport();
+    let msg = `<b>${report.month} Report</b>\n\n`;
+    msg += `Total Spent: Rp ${new Intl.NumberFormat('id-ID').format(report.totalSpent)}\n`;
+    msg += `Total Budget: Rp ${new Intl.NumberFormat('id-ID').format(report.totalBudget)}\n\n`;
+    
+    for (const stat of report.stats) {
+        const pct = stat.budget > 0 ? Math.round((stat.spent / stat.budget) * 100) : 0;
+        const bar = "█".repeat(Math.min(10, Math.floor(pct / 10))) + "░".repeat(Math.max(0, 10 - Math.floor(pct / 10)));
+        
+        msg += `<b>${stat.name}</b>\n`;
+        msg += `${bar} ${pct}%\n`;
+        msg += `Rp ${new Intl.NumberFormat('id-ID').format(stat.spent)} / ${new Intl.NumberFormat('id-ID').format(stat.budget)}\n\n`;
+    }
+    
+    await sendTelegramMessage(chatId, msg);
+}
+
+async function showToday(chatId: number) {
+    const summary = await getTodaySummary();
+    let msg = `<b>Today's Spending</b>\nTotal: Rp ${new Intl.NumberFormat('id-ID').format(summary.total)}\n\n`;
+    if (summary.lines.length === 0) {
+        msg += "No spending today yet.";
+    } else {
+        msg += summary.lines.join("\n");
+    }
+    await sendTelegramMessage(chatId, msg);
+}

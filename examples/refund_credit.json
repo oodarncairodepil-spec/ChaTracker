@@ -1,0 +1,9 @@
+{
+  "received_at": "2026-01-08T10:00:00Z",
+  "from_email": "refund@tokopedia.com",
+  "subject": "Pengembalian Dana Pesanan INV/20260108/XXI",
+  "date_header": "2026-01-08T09:55:00Z",
+  "gmail_message_id": "synthetic_refund_1",
+  "text_body": "Halo User,\nDana sebesar Rp 150.000 telah dikembalikan ke Saldo Tokopedia Anda.\nDetail:\nNomor Invoice: INV/20260108/XXI\nAlasan: Penjual membatalkan pesanan.\nTotal Pengembalian: Rp 150.000\n",
+  "email_label": "WalleTracker"
+}

@@ -1,0 +1,3 @@
+now, based on the "period_start_date" and "period_end_date" in table: budget_performance_summary
+
+pls calculate the total expense and total income during the newest 

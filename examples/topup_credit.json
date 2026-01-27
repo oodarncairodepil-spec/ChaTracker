@@ -1,0 +1,9 @@
+{
+  "received_at": "2026-01-09T12:00:00Z",
+  "from_email": "topup@ovo.id",
+  "subject": "Top Up Berhasil via BCA",
+  "date_header": "2026-01-09T11:58:00Z",
+  "gmail_message_id": "synthetic_topup_1",
+  "text_body": "Top Up OVO Cash sebesar Rp 500.000 dari BCA berhasil.\nSaldo OVO Cash Anda sekarang Rp 525.000.\nLihat detail transaksi di aplikasi OVO.",
+  "email_label": "WalleTracker"
+}

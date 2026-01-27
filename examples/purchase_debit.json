@@ -1,0 +1,9 @@
+{
+  "received_at": "2026-01-10T14:00:00Z",
+  "from_email": "no-reply@shopee.co.id",
+  "subject": "Pembayaran Berhasil untuk Pesanan 260110ABCDE",
+  "date_header": "2026-01-10T13:59:00Z",
+  "gmail_message_id": "synthetic_purchase_1",
+  "text_body": "Hai User,\nPembayaran sebesar Rp 75.500 untuk pesanan 260110ABCDE telah berhasil diverifikasi.\nMetode Pembayaran: ShopeePay\nWaktu Pembayaran: 10-01-2026 13:59\nTerima kasih telah berbelanja di Shopee!",
+  "email_label": "WalleTracker"
+}
