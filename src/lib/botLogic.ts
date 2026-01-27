@@ -44,7 +44,8 @@ async function handleMessage(message: any) {
   }
 
   // Commands (cancel flow if command)
-  if (text.startsWith("/")) {
+  const isCommand = text.startsWith("/") || ["Period", "Recalculate", "Today"].includes(text);
+  if (isCommand) {
     if (session.state !== "idle") {
         await updateSession(session.id, "idle", {});
     }
@@ -64,12 +65,25 @@ async function handleMessage(message: any) {
 
 async function handleCommand(chatId: number, text: string, session: any) {
   try {
-    const command = text.split(" ")[0];
-    console.log(`Processing command: ${command} from ${chatId}`);
+    const command = text.split(" ")[0]; // e.g. "/start"
+    const isPeriod = command === "/period" || text === "Period";
+    const isRecalculate = command === "/recalculate" || text === "Recalculate";
+    const isToday = command === "/today" || text === "Today";
+
+    console.log(`Processing command: ${text} from ${chatId}`);
 
     if (command === "/start") {
       await updateSession(session.id, "idle", {});
-      await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🚀\nWaiting for emails...");
+      await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🤖💰\nSelect an option below:", {
+        reply_markup: {
+          keyboard: [
+            [{ text: "Period" }, { text: "Recalculate" }],
+            [{ text: "Today" }]
+          ],
+          resize_keyboard: true,
+          persistent: true
+        }
+      });
     } else if (command === "/pending") {
       await showPendingTransactions(chatId);
     } else if (command === "/new") {
@@ -77,12 +91,12 @@ async function handleCommand(chatId: number, text: string, session: any) {
       await sendTelegramMessage(chatId, "Enter amount (e.g. 50000):");
     } else if (command === "/budget" || command === "/month") {
       await showBudget(chatId);
-    } else if (command === "/today") {
+    } else if (isToday) {
       await showToday(chatId);
-    } else if (command === "/period") {
+    } else if (isPeriod) {
       console.log("Showing period menu...");
       await showPeriodMenu(chatId);
-    } else if (command === "/recalculate") {
+    } else if (isRecalculate) {
       console.log("Starting recalculation...");
       await sendTelegramMessage(chatId, "⏳ Recalculating budget summaries... this may take a moment.");
       const result: any = await recalculateAllSummaries();
