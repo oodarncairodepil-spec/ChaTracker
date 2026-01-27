@@ -302,7 +302,7 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
 
     const { data: txs, count, error } = await supabase
         .from("transactions")
-        .select("*", { count: 'exact' })
+        .select("*, source_of_funds(name)", { count: 'exact' })
         .in("status", ["completed", "paid"])
         .gte("date", start)
         .lte("date", end)

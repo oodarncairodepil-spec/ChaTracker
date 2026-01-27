@@ -125,7 +125,7 @@ async function showPeriodMenu(chatId: number) {
   }
 
   const buttons = periods.map((p: any) => [{
-    text: `${p.start} - ${p.end}`,
+    text: `${formatDate(p.start)} - ${formatDate(p.end)}`,
     callback_data: `period:${p.start}:${p.end}`
   }]);
 
@@ -200,15 +200,17 @@ async function listTransactions(chatId: number, start: string, end: string, type
         const dateRaw = t.date || (t.happened_at ? t.happened_at.split('T')[0] : "Unknown");
         const date = formatDate(dateRaw);
         
-        // Single line format: 🔹 Desc | Rp Amount | Date (Type)
+        // Single line format: 🔹 Desc | Source | Rp Amount | Date (Type)
         const desc = t.description || t.merchant || "No Desc";
         // Shorten description if too long
         const shortDesc = desc.length > 15 ? desc.substring(0, 15) + "..." : desc;
         
+        const source = t.source_of_funds?.name || "Unknown";
+        
         // Tag (Exp/Inc)
         const tag = type === 'expense' ? '(Exp)' : '(Inc)';
         
-        msg += `🔹 ${shortDesc} | Rp ${fmt.format(t.amount)} | ${date} ${tag}\n`;
+        msg += `🔹 ${shortDesc} | ${source} | Rp ${fmt.format(t.amount)} | ${date} ${tag}\n`;
     });
 
     // Pagination buttons
