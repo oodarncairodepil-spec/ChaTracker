@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery } from "@/utils/telegram";
-import { getMonthlyReport, getTodaySummary, getTrackerPeriodSummary } from "@/lib/reporting";
+import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
@@ -75,8 +75,7 @@ async function handleCommand(chatId: number, text: string, session: any) {
     } else if (command === "/today") {
       await showToday(chatId);
     } else if (command === "/period") {
-      await sendTelegramMessage(chatId, "Fetching period data..."); // Acknowledge command immediately
-      await showPeriodSummary(chatId);
+      await showPeriodMenu(chatId);
     } else {
       await sendTelegramMessage(chatId, "Unknown command.");
     }
@@ -86,16 +85,29 @@ async function handleCommand(chatId: number, text: string, session: any) {
   }
 }
 
-async function showPeriodSummary(chatId: number) {
-  const summary: any = await getTrackerPeriodSummary();
+async function showPeriodMenu(chatId: number) {
+  const periods = await getAvailablePeriods();
   
-  if (summary?.error) {
-    await sendTelegramMessage(chatId, `⚠️ Error: ${summary.error}`);
+  if (!periods || periods.length === 0) {
+    await sendTelegramMessage(chatId, "No periods found in summary table.");
     return;
   }
 
-  if (!summary) {
-    await sendTelegramMessage(chatId, "No active tracker period found.");
+  const buttons = periods.map((p: any) => [{
+    text: `${p.start} - ${p.end}`,
+    callback_data: `period:${p.start}:${p.end}`
+  }]);
+
+  await sendTelegramMessage(chatId, "Select a Period:", {
+    reply_markup: { inline_keyboard: buttons }
+  });
+}
+
+async function showPeriodStats(chatId: number, start: string, end: string) {
+  const summary: any = await getPeriodStats(start, end);
+  
+  if (summary?.error) {
+    await sendTelegramMessage(chatId, `⚠️ Error: ${summary.error}`);
     return;
   }
 
@@ -127,6 +139,14 @@ async function handleCallbackQuery(query: any) {
   // data format: action:id:extra
   const parts = data.split(":");
   const action = parts[0];
+
+  if (action === "period") {
+      const start = parts[1];
+      const end = parts[2];
+      await answerCallbackQuery(query.id, "Loading...");
+      await showPeriodStats(chatId, start, end);
+      return;
+  }
   const id = parts[1]; // usually transaction_id
 
   if (action === "tx_confirm") {

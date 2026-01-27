@@ -89,41 +89,42 @@ export async function getTodaySummary() {
     };
 }
 
-export async function getTrackerPeriodSummary() {
-    // 1. Get the newest period from budget_performance_summary
+export async function getAvailablePeriods() {
+    // Get unique periods from summary table
+    // Since we have duplicates (income/expense), we need to group or just select distinct start dates
+    // Supabase doesn't have "DISTINCT ON" easily via JS client for specific columns combined with order, 
+    // so we'll fetch all and dedup in JS.
     const { data: periods, error } = await supabase
         .from("budget_performance_summary")
         .select("period_start_date, period_end_date")
-        .order("period_start_date", { ascending: false })
-        .limit(1);
+        .order("period_start_date", { ascending: false });
 
     if (error) {
         console.error("Error fetching periods:", error);
-        return { error: error.message };
+        return [];
     }
 
-    if (!periods || periods.length === 0) {
-        return { error: "Table 'budget_performance_summary' is empty or RLS is blocking access." };
+    if (!periods) return [];
+
+    // Dedup based on start_date
+    const seen = new Set();
+    const uniquePeriods: { start: string, end: string }[] = [];
+    
+    for (const p of periods) {
+        if (!seen.has(p.period_start_date)) {
+            seen.add(p.period_start_date);
+            uniquePeriods.push({
+                start: p.period_start_date,
+                end: p.period_end_date
+            });
+        }
     }
 
-    const currentPeriod = periods[0];
-    const start = currentPeriod.period_start_date;
-    const end = currentPeriod.period_end_date;
+    return uniquePeriods.slice(0, 5); // Return top 5
+}
 
-    // 2. Calculate Total Expense and Income for this period
-    // We use the 'transactions' table for calculation
-    const { data: txs, error: txError } = await supabase
-        .from("transactions")
-        .select("amount, direction")
-        .eq("status", "completed")
-        .gte("happened_at", start)
-        .lte("happened_at", end);
-
-    if (txError) {
-        return { error: `Transaction query failed: ${txError.message}` };
-    }
-
-    // 3. Get Budgeted amounts from summary table for this period
+export async function getPeriodStats(start: string, end: string) {
+    // 1. Get Budgeted amounts from summary table for this period
     const { data: budgetData } = await supabase
         .from("budget_performance_summary")
         .select("category_type, total_budgeted")
@@ -138,6 +139,18 @@ export async function getTrackerPeriodSummary() {
         if (row.category_type === 'expense') budgetedExpense += amount;
         if (row.category_type === 'income') budgetedIncome += amount;
     });
+
+    // 2. Calculate Total Expense and Income from transactions
+    const { data: txs, error: txError } = await supabase
+        .from("transactions")
+        .select("amount, direction")
+        .eq("status", "completed")
+        .gte("happened_at", start)
+        .lte("happened_at", end);
+
+    if (txError) {
+        return { error: `Transaction query failed: ${txError.message}` };
+    }
 
     let totalExpense = 0;
     let totalIncome = 0;
