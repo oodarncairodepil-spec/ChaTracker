@@ -180,8 +180,11 @@ export async function getPeriodStats(start: string, end: string) {
         const isExpense = t.direction === 'debit' || t.type === 'expense';
         const isIncome = t.direction === 'credit' || t.type === 'income';
 
+        const desc = (t.description || t.merchant || "").toLowerCase();
+        const isInternal = desc.includes("internal transfer");
+
         if (isExpense) totalExpense += t.amount;
-        if (isIncome) totalIncome += t.amount;
+        if (isIncome && !isInternal) totalIncome += t.amount;
     });
 
     return {
@@ -247,9 +250,13 @@ export async function recalculateAllSummaries() {
             // Check direction OR type
             const isExpense = t.direction === 'debit' || t.type === 'expense';
             const isIncome = t.direction === 'credit' || t.type === 'income';
+            
+            // Check for Internal Transfer
+            const desc = (t.description || t.merchant || "").toLowerCase();
+            const isInternal = desc.includes("internal transfer");
 
             if (isExpense) actualExpense += t.amount;
-            if (isIncome) actualIncome += t.amount;
+            if (isIncome && !isInternal) actualIncome += t.amount;
         });
 
         // Debug log for first period
@@ -331,10 +338,19 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
         }
     });
 
-    const total = filteredTxs.length;
+    // Filter out Internal Transfer for Income
+    const finalTxs = filteredTxs.filter((t: any) => {
+        if (type === 'income') {
+            const desc = (t.description || t.merchant || "").toLowerCase();
+            if (desc.includes("internal transfer")) return false;
+        }
+        return true;
+    });
+
+    const total = finalTxs.length;
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE;
-    const paginatedTxs = filteredTxs.slice(from, to);
+    const paginatedTxs = finalTxs.slice(from, to);
 
     return { txs: paginatedTxs, total };
 }
