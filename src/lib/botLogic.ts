@@ -224,6 +224,11 @@ async function listTransactions(chatId: number, start: string, end: string, type
         if (hasNext) row.push({ text: "Next ➡️", callback_data: `list_tx:${start}:${end}:${type}:${page + 1}` });
         buttons.push(row);
     }
+    
+    // Temporary Debug
+    if (page === 0 && txs.length > 0 && (!txs[0].source_name || txs[0].source_name === "Unknown")) {
+         msg += `\n⚠️ Debug: SourceID=${txs[0].source_of_funds_id} | ${txs[0].source_of_fund_id}`;
+    }
 
     await sendTelegramMessage(chatId, msg, { reply_markup: { inline_keyboard: buttons } });
 }

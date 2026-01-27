@@ -298,6 +298,8 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
     const sourceMap = new Map();
     sources?.forEach((s: any) => sourceMap.set(s.id, s.name));
 
+    console.log(`Debug: Loaded ${sources?.length} sources.`);
+
     // Filter in memory
     const filteredTxs = (allTxs || []).filter((t: any) => {
         if (type === 'expense') {
@@ -312,6 +314,11 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
         // Check both possible column names
         const sourceId = t.source_of_funds_id || t.source_of_fund_id;
         t.source_name = sourceMap.get(sourceId) || "Unknown";
+        
+        // Debug first item
+        if (filteredTxs.indexOf(t) === 0) {
+             console.log(`Debug Tx: ID=${t.id}, SourceID=${sourceId}, MapHas=${sourceMap.has(sourceId)}`);
+        }
     });
 
     const total = filteredTxs.length;
