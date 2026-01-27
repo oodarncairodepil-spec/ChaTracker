@@ -68,20 +68,26 @@ export async function setMyCommands(commands: { command: string; description: st
     return res.json();
 }
 
-export async function setChatMenuButton(chatId: number | string, webAppUrl: string) {
+export async function setChatMenuButton(chatId: number | string, webAppUrl?: string) {
     if (!TELEGRAM_BOT_TOKEN) return;
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setChatMenuButton`;
+    
+    const body: any = { chat_id: chatId };
+    if (webAppUrl) {
+        body.menu_button = {
+            type: "web_app",
+            text: "Open App",
+            web_app: { url: webAppUrl }
+        };
+    } else {
+        // Reset to default commands menu
+        body.menu_button = { type: "commands" };
+    }
+
     const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            chat_id: chatId,
-            menu_button: {
-                type: "web_app",
-                text: "Open App",
-                web_app: { url: webAppUrl }
-            }
-        })
+        body: JSON.stringify(body)
     });
     return res.json();
 }

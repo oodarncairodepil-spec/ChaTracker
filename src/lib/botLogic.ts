@@ -114,7 +114,11 @@ async function handleCommand(chatId: number, text: string, session: any) {
           { command: "pending", description: "Check Pending Transactions" },
           { command: "recalculate", description: "Refresh Data" }
       ]);
-      await sendTelegramMessage(chatId, "✅ Menu button updated! You might need to restart the app to see it.");
+      await setChatMenuButton(chatId); // Reset to commands mode
+      await sendTelegramMessage(chatId, "✅ Menu commands updated and button reset to 'Menu'. Restart app if needed.");
+    } else if (command === "/resetmenu") {
+      await setChatMenuButton(chatId);
+      await sendTelegramMessage(chatId, "✅ Menu button reset to standard Commands list.");
     } else if (command === "/setwebapp") {
       const url = text.split(" ")[1];
       if (!url) {
