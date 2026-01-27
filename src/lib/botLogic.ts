@@ -200,17 +200,17 @@ async function listTransactions(chatId: number, start: string, end: string, type
         const dateRaw = t.date || (t.happened_at ? t.happened_at.split('T')[0] : "Unknown");
         const date = formatDate(dateRaw);
         
-        // Single line format: 🔹 Desc | Source | Rp Amount | Date (Type)
+        // Single line format: Desc | Source | Amount | Date (Type)
         const desc = t.description || t.merchant || "No Desc";
-        // Shorten description if too long
-        const shortDesc = desc.length > 15 ? desc.substring(0, 15) + "..." : desc;
+        // Shorten description to max 6 chars
+        const shortDesc = desc.length > 6 ? desc.substring(0, 6) + "..." : desc;
         
         const source = t.source_name || "Unknown";
         
         // Tag (Exp/Inc)
         const tag = type === 'expense' ? '(Exp)' : '(Inc)';
         
-        msg += `🔹 ${shortDesc} | ${source} | Rp ${fmt.format(t.amount)} | ${date} ${tag}\n`;
+        msg += `${shortDesc} | ${source} | ${fmt.format(t.amount)} | ${date} ${tag}\n`;
     });
 
     // Pagination buttons
