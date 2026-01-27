@@ -164,10 +164,10 @@ export async function getPeriodStats(start: string, end: string) {
     // Calculate Total Expense and Income from transactions
     const { data: txs, error: txError } = await supabase
         .from("transactions")
-        .select("amount, direction")
-        .eq("status", "completed")
-        .gte("happened_at", start)
-        .lte("happened_at", end);
+        .select("amount, direction, type")
+        .in("status", ["completed", "paid"])
+        .gte("date", start)
+        .lte("date", end);
 
     if (txError) {
         return { error: `Transaction query failed: ${txError.message}` };
@@ -176,12 +176,12 @@ export async function getPeriodStats(start: string, end: string) {
     let totalExpense = 0;
     let totalIncome = 0;
 
-    txs?.forEach((tx: any) => {
-        if (tx.direction === 'debit') {
-            totalExpense += tx.amount;
-        } else if (tx.direction === 'credit') {
-            totalIncome += tx.amount;
-        }
+    txs?.forEach((t: any) => {
+        const isExpense = t.direction === 'debit' || t.type === 'expense';
+        const isIncome = t.direction === 'credit' || t.type === 'income';
+
+        if (isExpense) totalExpense += t.amount;
+        if (isIncome) totalIncome += t.amount;
     });
 
     return {
@@ -232,18 +232,24 @@ export async function recalculateAllSummaries() {
     // 2. Process each period
     for (const p of periodsMap.values()) {
         // Calculate Actuals
+        // Note: Data might use 'date' column instead of 'happened_at'
+        // And status might be 'paid' instead of 'completed'
         const { data: txs } = await supabase.from("transactions")
-            .select("amount, direction")
-            .eq("status", "completed")
-            .gte("happened_at", p.start)
-            .lte("happened_at", p.end);
+            .select("amount, direction, type")
+            .in("status", ["completed", "paid"]) 
+            .gte("date", p.start)
+            .lte("date", p.end);
         
         let actualExpense = 0;
         let actualIncome = 0;
 
         txs?.forEach((t: any) => {
-            if (t.direction === 'debit') actualExpense += t.amount;
-            if (t.direction === 'credit') actualIncome += t.amount;
+            // Check direction OR type
+            const isExpense = t.direction === 'debit' || t.type === 'expense';
+            const isIncome = t.direction === 'credit' || t.type === 'income';
+
+            if (isExpense) actualExpense += t.amount;
+            if (isIncome) actualIncome += t.amount;
         });
 
         // Debug log for first period
