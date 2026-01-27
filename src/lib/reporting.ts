@@ -275,3 +275,45 @@ export async function recalculateAllSummaries() {
 
     return { count, debugMsg, totalTx: txCount };
 }
+
+export async function getTransactionsForPeriod(start: string, end: string, type: 'expense' | 'income', page: number = 0) {
+    const PAGE_SIZE = 10;
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    // Filter by type logic
+    // Expense: direction=debit OR type=expense
+    // Income: direction=credit OR type=income
+    
+    // Supabase OR syntax: .or(`direction.eq.debit,type.eq.expense`)
+    // But we also need date and status filter.
+    // .and(`status.in.(completed,paid),date.gte.${start},date.lte.${end}`)
+    
+    // Combining complex OR with AND in Supabase JS client can be tricky.
+    // Easier way: fetch filtered by date/status, then filter by type in JS (if page size is small enough?)
+    // No, pagination needs DB filter.
+    
+    let orQuery = "";
+    if (type === 'expense') {
+        orQuery = `direction.eq.debit,type.eq.expense`;
+    } else {
+        orQuery = `direction.eq.credit,type.eq.income`;
+    }
+
+    const { data: txs, count, error } = await supabase
+        .from("transactions")
+        .select("*", { count: 'exact' })
+        .in("status", ["completed", "paid"])
+        .gte("date", start)
+        .lte("date", end)
+        .or(orQuery)
+        .order("date", { ascending: false })
+        .range(from, to);
+
+    if (error) {
+        console.error("Error fetching txs:", error);
+        return { txs: [], total: 0 };
+    }
+
+    return { txs: txs || [], total: count || 0 };
+}

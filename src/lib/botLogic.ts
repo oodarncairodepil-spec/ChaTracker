@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery } from "@/utils/telegram";
-import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries } from "@/lib/reporting";
+import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
@@ -159,7 +159,54 @@ async function showPeriodStats(chatId: number, start: string, end: string) {
 📉 <b>Net Flow:</b> Rp ${fmt.format(summary.net)}
 `;
 
-  await sendTelegramMessage(chatId, msg);
+  const buttons = {
+      inline_keyboard: [
+          [
+              { text: "📉 View Expenses", callback_data: `list_tx:${start}:${end}:expense:0` },
+              { text: "💰 View Income", callback_data: `list_tx:${start}:${end}:income:0` }
+          ]
+      ]
+  };
+
+  await sendTelegramMessage(chatId, msg, { reply_markup: buttons });
+}
+
+async function listTransactions(chatId: number, start: string, end: string, type: 'expense' | 'income', page: number) {
+    const { txs, total } = await getTransactionsForPeriod(start, end, type, page);
+    
+    if (txs.length === 0) {
+        await sendTelegramMessage(chatId, "No transactions found.");
+        return;
+    }
+
+    const fmt = new Intl.NumberFormat('id-ID');
+    let msg = `📋 <b>${type.toUpperCase()} List</b> (Page ${page + 1} of ${Math.ceil(total / 10)})\n`;
+    msg += `📅 ${start} - ${end}\n\n`;
+
+    txs.forEach((t: any) => {
+        const date = t.date || (t.happened_at ? t.happened_at.split('T')[0] : "Unknown");
+        // Try to get category name if available, else just "Unknown"
+        // Note: t.category might be UUID, ideally we fetch category name but for now keep it simple
+        const desc = t.description || t.merchant || "No Description";
+        msg += `🔹 <b>${desc}</b>\n`;
+        msg += `   Rp ${fmt.format(t.amount)} | 📅 ${date}\n`;
+        if (t.type) msg += `   🏷️ ${t.type}\n`; // Maybe show category if we join it
+        msg += "\n";
+    });
+
+    // Pagination buttons
+    const buttons = [];
+    const hasNext = (page + 1) * 10 < total;
+    const hasPrev = page > 0;
+
+    if (hasPrev || hasNext) {
+        const row = [];
+        if (hasPrev) row.push({ text: "⬅️ Prev", callback_data: `list_tx:${start}:${end}:${type}:${page - 1}` });
+        if (hasNext) row.push({ text: "Next ➡️", callback_data: `list_tx:${start}:${end}:${type}:${page + 1}` });
+        buttons.push(row);
+    }
+
+    await sendTelegramMessage(chatId, msg, { reply_markup: { inline_keyboard: buttons } });
 }
 
 async function handleCallbackQuery(query: any) {
@@ -176,6 +223,16 @@ async function handleCallbackQuery(query: any) {
       const end = parts[2];
       await answerCallbackQuery(query.id, "Loading...");
       await showPeriodStats(chatId, start, end);
+      return;
+  }
+  if (action === "list_tx") {
+      const start = parts[1];
+      const end = parts[2];
+      const type: any = parts[3];
+      const page = parseInt(parts[4] || "0", 10);
+      
+      await answerCallbackQuery(query.id, "Loading list...");
+      await listTransactions(chatId, start, end, type, page);
       return;
   }
   const id = parts[1]; // usually transaction_id
