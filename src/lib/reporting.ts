@@ -97,9 +97,13 @@ export async function getTrackerPeriodSummary() {
         .order("period_start_date", { ascending: false })
         .limit(1);
 
-    if (error || !periods || periods.length === 0) {
+    if (error) {
         console.error("Error fetching periods:", error);
-        return null;
+        return { error: error.message };
+    }
+
+    if (!periods || periods.length === 0) {
+        return { error: "Table 'budget_performance_summary' is empty or RLS is blocking access." };
     }
 
     const currentPeriod = periods[0];
@@ -108,12 +112,16 @@ export async function getTrackerPeriodSummary() {
 
     // 2. Calculate Total Expense and Income for this period
     // We use the 'transactions' table for calculation
-    const { data: txs } = await supabase
+    const { data: txs, error: txError } = await supabase
         .from("transactions")
         .select("amount, direction")
         .eq("status", "completed")
         .gte("happened_at", start)
         .lte("happened_at", end);
+
+    if (txError) {
+        return { error: `Transaction query failed: ${txError.message}` };
+    }
 
     let totalExpense = 0;
     let totalIncome = 0;

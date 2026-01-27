@@ -87,7 +87,13 @@ async function handleCommand(chatId: number, text: string, session: any) {
 }
 
 async function showPeriodSummary(chatId: number) {
-  const summary = await getTrackerPeriodSummary();
+  const summary: any = await getTrackerPeriodSummary();
+  
+  if (summary?.error) {
+    await sendTelegramMessage(chatId, `⚠️ Error: ${summary.error}`);
+    return;
+  }
+
   if (!summary) {
     await sendTelegramMessage(chatId, "No active tracker period found.");
     return;
