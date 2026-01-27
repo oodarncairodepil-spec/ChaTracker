@@ -280,10 +280,9 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
     const PAGE_SIZE = 10;
     
     // Fetch ALL matching transactions for the period (without pagination first)
-    // We filter by type in JS to avoid complex OR logic in Supabase which might fail
     const { data: allTxs, error } = await supabase
         .from("transactions")
-        .select("*, source_of_funds(name)")
+        .select("*")
         .in("status", ["completed", "paid"])
         .gte("date", start)
         .lte("date", end)
@@ -294,6 +293,11 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
         return { txs: [], total: 0 };
     }
 
+    // Fetch Source of Funds map
+    const { data: sources } = await supabase.from("source_of_funds").select("id, name");
+    const sourceMap = new Map();
+    sources?.forEach((s: any) => sourceMap.set(s.id, s.name));
+
     // Filter in memory
     const filteredTxs = (allTxs || []).filter((t: any) => {
         if (type === 'expense') {
@@ -301,6 +305,13 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
         } else {
             return t.direction === 'credit' || t.type === 'income';
         }
+    });
+
+    // Attach source name
+    filteredTxs.forEach((t: any) => {
+        // Check both possible column names
+        const sourceId = t.source_of_funds_id || t.source_of_fund_id;
+        t.source_name = sourceMap.get(sourceId) || "Unknown";
     });
 
     const total = filteredTxs.length;

@@ -205,7 +205,7 @@ async function listTransactions(chatId: number, start: string, end: string, type
         // Shorten description if too long
         const shortDesc = desc.length > 15 ? desc.substring(0, 15) + "..." : desc;
         
-        const source = t.source_of_funds?.name || "Unknown";
+        const source = t.source_name || "Unknown";
         
         // Tag (Exp/Inc)
         const tag = type === 'expense' ? '(Exp)' : '(Inc)';
