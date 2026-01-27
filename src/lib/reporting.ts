@@ -202,6 +202,10 @@ export async function recalculateAllSummaries() {
     if (error) return { error: error.message };
     if (!viewRows) return { count: 0 };
 
+    // Debug: Check transactions count
+    const { count: txCount } = await supabase.from("transactions").select("*", { count: 'exact', head: true });
+    console.log(`Total transactions in DB: ${txCount}`);
+
     // Group by period to merge income/expense rows
     const periodsMap = new Map();
 
@@ -223,6 +227,7 @@ export async function recalculateAllSummaries() {
     }
 
     let count = 0;
+    let debugMsg = "";
 
     // 2. Process each period
     for (const p of periodsMap.values()) {
@@ -241,6 +246,12 @@ export async function recalculateAllSummaries() {
             if (t.direction === 'credit') actualIncome += t.amount;
         });
 
+        // Debug log for first period
+        if (count === 0) {
+            debugMsg = `Debug: Period ${p.start}-${p.end}. Found ${txs?.length} txs. Exp: ${actualExpense}, Inc: ${actualIncome}.`;
+            console.log(debugMsg);
+        }
+
         // 3. Upsert into period_summaries table
         await supabase.from("period_summaries").upsert({
             user_id: p.user_id,
@@ -256,5 +267,5 @@ export async function recalculateAllSummaries() {
         count++;
     }
 
-    return { count };
+    return { count, debugMsg, totalTx: txCount };
 }

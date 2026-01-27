@@ -4,16 +4,20 @@ import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats,
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
-  // 1. Callback Query
-  if (update.callback_query) {
-    await handleCallbackQuery(update.callback_query);
-    return;
-  }
+  try {
+    // 1. Callback Query
+    if (update.callback_query) {
+      await handleCallbackQuery(update.callback_query);
+      return;
+    }
 
-  // 2. Message
-  if (update.message) {
-    await handleMessage(update.message);
-    return;
+    // 2. Message
+    if (update.message) {
+      await handleMessage(update.message);
+      return;
+    }
+  } catch (error) {
+    console.error("Bot Logic Error:", error);
   }
 }
 
@@ -61,6 +65,7 @@ async function handleMessage(message: any) {
 async function handleCommand(chatId: number, text: string, session: any) {
   try {
     const command = text.split(" ")[0];
+    console.log(`Processing command: ${command} from ${chatId}`);
 
     if (command === "/start") {
       await updateSession(session.id, "idle", {});
@@ -75,16 +80,20 @@ async function handleCommand(chatId: number, text: string, session: any) {
     } else if (command === "/today") {
       await showToday(chatId);
     } else if (command === "/period") {
+      console.log("Showing period menu...");
       await showPeriodMenu(chatId);
     } else if (command === "/recalculate") {
+      console.log("Starting recalculation...");
       await sendTelegramMessage(chatId, "⏳ Recalculating budget summaries... this may take a moment.");
       const result: any = await recalculateAllSummaries();
+      console.log("Recalculation result:", result);
       if (result.error) {
           await sendTelegramMessage(chatId, `⚠️ Error: ${result.error}`);
       } else {
-          await sendTelegramMessage(chatId, `✅ Done! Updated ${result.count} summary rows.`);
+          await sendTelegramMessage(chatId, `✅ Done! Updated ${result.count} summary rows.\n\n🔍 Debug: Total TXs in DB: ${result.totalTx}\n${result.debugMsg}`);
       }
     } else {
+      console.log("Unknown command");
       await sendTelegramMessage(chatId, "Unknown command.");
     }
   } catch (error: any) {
