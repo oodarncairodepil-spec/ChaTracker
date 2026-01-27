@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     // 3. Handle Update
     console.log("Received update:", JSON.stringify(update, null, 2));
     await handleUpdate(update);
+    console.log("Finished handling update");
 
     return NextResponse.json({ ok: true });
   } catch (error) {
