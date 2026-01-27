@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands } from "@/utils/telegram";
+import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands, setChatMenuButton } from "@/utils/telegram";
 import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
@@ -115,6 +115,14 @@ async function handleCommand(chatId: number, text: string, session: any) {
           { command: "recalculate", description: "Refresh Data" }
       ]);
       await sendTelegramMessage(chatId, "✅ Menu button updated! You might need to restart the app to see it.");
+    } else if (command === "/setwebapp") {
+      const url = text.split(" ")[1];
+      if (!url) {
+          await sendTelegramMessage(chatId, "Please provide the Web App URL. Usage: /setwebapp https://your-app.com");
+          return;
+      }
+      await setChatMenuButton(chatId, url);
+      await sendTelegramMessage(chatId, "✅ Web App button set! Restart Telegram to see it.");
     } else {
       console.log("Unknown command");
       await sendTelegramMessage(chatId, "Unknown command.");
