@@ -134,6 +134,19 @@ async function showPeriodMenu(chatId: number) {
   });
 }
 
+function formatDate(dateStr: string): string {
+    if (!dateStr) return "";
+    try {
+        const d = new Date(dateStr);
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = d.toLocaleString('en-US', { month: 'short' });
+        const year = d.getFullYear().toString().slice(-2);
+        return `${day} ${month} '${year}`;
+    } catch (e) {
+        return dateStr;
+    }
+}
+
 async function showPeriodStats(chatId: number, start: string, end: string) {
   const summary: any = await getPeriodStats(start, end);
   
@@ -143,8 +156,8 @@ async function showPeriodStats(chatId: number, start: string, end: string) {
   }
 
   const fmt = new Intl.NumberFormat('id-ID');
-  const startStr = summary.start.toLocaleDateString();
-  const endStr = summary.end.toLocaleDateString();
+  const startStr = formatDate(start);
+  const endStr = formatDate(end);
 
   const msg = `
 📊 <b>Tracker Period Summary</b>
@@ -181,17 +194,21 @@ async function listTransactions(chatId: number, start: string, end: string, type
 
     const fmt = new Intl.NumberFormat('id-ID');
     let msg = `📋 <b>${type.toUpperCase()} List</b> (Page ${page + 1} of ${Math.ceil(total / 10)})\n`;
-    msg += `📅 ${start} - ${end}\n\n`;
+    msg += `📅 ${formatDate(start)} - ${formatDate(end)}\n\n`;
 
     txs.forEach((t: any) => {
-        const date = t.date || (t.happened_at ? t.happened_at.split('T')[0] : "Unknown");
-        // Try to get category name if available, else just "Unknown"
-        // Note: t.category might be UUID, ideally we fetch category name but for now keep it simple
-        const desc = t.description || t.merchant || "No Description";
-        msg += `🔹 <b>${desc}</b>\n`;
-        msg += `   Rp ${fmt.format(t.amount)} | 📅 ${date}\n`;
-        if (t.type) msg += `   🏷️ ${t.type}\n`; // Maybe show category if we join it
-        msg += "\n";
+        const dateRaw = t.date || (t.happened_at ? t.happened_at.split('T')[0] : "Unknown");
+        const date = formatDate(dateRaw);
+        
+        // Single line format: 🔹 Desc | Rp Amount | Date (Type)
+        const desc = t.description || t.merchant || "No Desc";
+        // Shorten description if too long
+        const shortDesc = desc.length > 15 ? desc.substring(0, 15) + "..." : desc;
+        
+        // Tag (Exp/Inc)
+        const tag = type === 'expense' ? '(Exp)' : '(Inc)';
+        
+        msg += `🔹 ${shortDesc} | Rp ${fmt.format(t.amount)} | ${date} ${tag}\n`;
     });
 
     // Pagination buttons
