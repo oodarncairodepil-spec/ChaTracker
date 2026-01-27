@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { sendTelegramMessage, editMessageText, answerCallbackQuery } from "@/utils/telegram";
+import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands } from "@/utils/telegram";
 import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
@@ -106,6 +106,15 @@ async function handleCommand(chatId: number, text: string, session: any) {
       } else {
           await sendTelegramMessage(chatId, `✅ Done! Updated ${result.count} summary rows.\n\n🔍 Debug: Total TXs in DB: ${result.totalTx}\n${result.debugMsg}`);
       }
+    } else if (command === "/setmenu") {
+      await setMyCommands([
+          { command: "start", description: "Start & Menu" },
+          { command: "period", description: "Check Tracker Period" },
+          { command: "today", description: "Today's Spending" },
+          { command: "pending", description: "Check Pending Transactions" },
+          { command: "recalculate", description: "Refresh Data" }
+      ]);
+      await sendTelegramMessage(chatId, "✅ Menu button updated! You might need to restart the app to see it.");
     } else {
       console.log("Unknown command");
       await sendTelegramMessage(chatId, "Unknown command.");
