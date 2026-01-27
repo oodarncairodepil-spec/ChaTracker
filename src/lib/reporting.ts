@@ -90,41 +90,62 @@ export async function getTodaySummary() {
 }
 
 export async function getAvailablePeriods() {
-    // Get unique periods from summary table
-    // Since we have duplicates (income/expense), we need to group or just select distinct start dates
-    // Supabase doesn't have "DISTINCT ON" easily via JS client for specific columns combined with order, 
-    // so we'll fetch all and dedup in JS.
+    // Read from the new table 'period_summaries' first
     const { data: periods, error } = await supabase
-        .from("budget_performance_summary")
+        .from("period_summaries")
         .select("period_start_date, period_end_date")
         .order("period_start_date", { ascending: false });
 
     if (error) {
-        console.error("Error fetching periods:", error);
-        return [];
+        console.error("Error fetching periods from table:", error);
+        // Fallback to view if table is empty
     }
 
-    if (!periods) return [];
+    if (periods && periods.length > 0) {
+        return periods.map(p => ({ start: p.period_start_date, end: p.period_end_date }));
+    }
 
-    // Dedup based on start_date
+    // Fallback: Get from view if table not populated yet
+    const { data: viewPeriods } = await supabase
+        .from("budget_performance_summary")
+        .select("period_start_date, period_end_date")
+        .order("period_start_date", { ascending: false });
+        
+    if (!viewPeriods) return [];
+
     const seen = new Set();
     const uniquePeriods: { start: string, end: string }[] = [];
-    
-    for (const p of periods) {
+    for (const p of viewPeriods) {
         if (!seen.has(p.period_start_date)) {
             seen.add(p.period_start_date);
-            uniquePeriods.push({
-                start: p.period_start_date,
-                end: p.period_end_date
-            });
+            uniquePeriods.push({ start: p.period_start_date, end: p.period_end_date });
         }
     }
-
-    return uniquePeriods.slice(0, 5); // Return top 5
+    return uniquePeriods.slice(0, 5);
 }
 
 export async function getPeriodStats(start: string, end: string) {
-    // 1. Get Budgeted amounts from summary table for this period
+    // Try to get from period_summaries table first
+    const { data: summary } = await supabase
+        .from("period_summaries")
+        .select("*")
+        .eq("period_start_date", start)
+        .eq("period_end_date", end)
+        .single();
+
+    if (summary) {
+        return {
+            start: new Date(start),
+            end: new Date(end),
+            totalExpense: summary.total_actual_expense,
+            totalIncome: summary.total_actual_income,
+            net: summary.total_actual_income - summary.total_actual_expense,
+            budgetedExpense: summary.total_budgeted_expense,
+            budgetedIncome: summary.total_budgeted_income
+        };
+    }
+
+    // Fallback to dynamic calculation if not in table
     const { data: budgetData } = await supabase
         .from("budget_performance_summary")
         .select("category_type, total_budgeted")
@@ -140,7 +161,7 @@ export async function getPeriodStats(start: string, end: string) {
         if (row.category_type === 'income') budgetedIncome += amount;
     });
 
-    // 2. Calculate Total Expense and Income from transactions
+    // Calculate Total Expense and Income from transactions
     const { data: txs, error: txError } = await supabase
         .from("transactions")
         .select("amount, direction")
@@ -175,48 +196,62 @@ export async function getPeriodStats(start: string, end: string) {
 }
 
 export async function recalculateAllSummaries() {
-    const { data: rows, error } = await supabase.from("budget_performance_summary").select("*");
+    // 1. Get unique periods from the View
+    const { data: viewRows, error } = await supabase.from("budget_performance_summary").select("*");
     
     if (error) return { error: error.message };
-    if (!rows) return { count: 0 };
+    if (!viewRows) return { count: 0 };
+
+    // Group by period to merge income/expense rows
+    const periodsMap = new Map();
+
+    for (const row of viewRows) {
+        const key = `${row.user_id}:${row.period_start_date}:${row.period_end_date}`;
+        if (!periodsMap.has(key)) {
+            periodsMap.set(key, {
+                user_id: row.user_id,
+                start: row.period_start_date,
+                end: row.period_end_date,
+                budgetExpense: 0,
+                budgetIncome: 0
+            });
+        }
+        const p = periodsMap.get(key);
+        const amount = parseFloat(row.total_budgeted || "0");
+        if (row.category_type === 'expense') p.budgetExpense += amount;
+        if (row.category_type === 'income') p.budgetIncome += amount;
+    }
 
     let count = 0;
 
-    for (const row of rows) {
-        const start = row.period_start_date;
-        const end = row.period_end_date;
-        const type = row.category_type; // 'expense' or 'income'
-        
-        // Map category_type to transaction direction
-        // expense -> debit, income -> credit
-        const direction = type === 'expense' ? 'debit' : 'credit';
-
+    // 2. Process each period
+    for (const p of periodsMap.values()) {
         // Calculate Actuals
         const { data: txs } = await supabase.from("transactions")
-            .select("amount")
-            .eq("direction", direction)
+            .select("amount, direction")
             .eq("status", "completed")
-            .gte("happened_at", start)
-            .lte("happened_at", end);
+            .gte("happened_at", p.start)
+            .lte("happened_at", p.end);
         
-        const totalActual = txs?.reduce((sum, t) => sum + t.amount, 0) || 0;
+        let actualExpense = 0;
+        let actualIncome = 0;
 
-        // Calculate Variance (Budget - Actual for Expense? Actual - Budget for Income?)
-        // Usually Variance = Budget - Actual (Positive is good for expense)
-        // JSON shows total_variance = -57401108 (when actual is 0 and budget is 57M). 
-        // So Variance = Actual - Budget? 0 - 57M = -57M.
-        // Let's stick to updating total_actual first.
+        txs?.forEach((t: any) => {
+            if (t.direction === 'debit') actualExpense += t.amount;
+            if (t.direction === 'credit') actualIncome += t.amount;
+        });
 
-        // Update using composite key
-        await supabase.from("budget_performance_summary")
-            .update({ 
-                total_actual: totalActual,
-                // last_recalculated_at: new Date().toISOString() // Add this if migration ran
-            })
-            .eq("user_id", row.user_id)
-            .eq("period_start_date", start)
-            .eq("period_end_date", end)
-            .eq("category_type", type);
+        // 3. Upsert into period_summaries table
+        await supabase.from("period_summaries").upsert({
+            user_id: p.user_id,
+            period_start_date: p.start,
+            period_end_date: p.end,
+            total_budgeted_expense: p.budgetExpense,
+            total_budgeted_income: p.budgetIncome,
+            total_actual_expense: actualExpense,
+            total_actual_income: actualIncome,
+            last_recalculated_at: new Date().toISOString()
+        }, { onConflict: 'user_id, period_start_date, period_end_date' });
         
         count++;
     }
