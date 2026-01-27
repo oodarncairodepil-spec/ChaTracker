@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co";
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key";
 
-if (!supabaseUrl || !supabaseKey) {
-    console.warn("Supabase credentials missing. Check .env or Vercel settings.");
+if (supabaseUrl === "https://placeholder.supabase.co") {
+    console.warn("Supabase credentials missing. Using placeholder for build.");
 }
 
 // Note: In API routes/server components, prefer using SERVICE_ROLE_KEY for admin tasks
