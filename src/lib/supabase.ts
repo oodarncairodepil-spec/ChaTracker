@@ -5,6 +5,9 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 if (supabaseUrl === "https://placeholder.supabase.co") {
     console.warn("Supabase credentials missing. Using placeholder for build.");
+    if (process.env.NODE_ENV === 'production') {
+        console.error("CRITICAL ERROR: NEXT_PUBLIC_SUPABASE_URL is missing in Vercel Environment Variables! The bot cannot connect to the database.");
+    }
 }
 
 // Note: In API routes/server components, prefer using SERVICE_ROLE_KEY for admin tasks
