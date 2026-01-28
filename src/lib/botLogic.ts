@@ -341,19 +341,52 @@ async function handleCallbackQuery(query: any) {
   if (action === "view_budget") {
       const start = parts[1];
       const end = parts[2];
-      await answerCallbackQuery(query.id, "Loading budget...");
+      await answerCallbackQuery(query.id, "Loading summary...");
       
       const stats: any = await getBudgetBreakdown(start, end);
       const fmt = new Intl.NumberFormat('id-ID');
       
+      let totalActual = 0;
+      let totalBudget = 0;
+      if (stats && stats.length > 0) {
+          stats.forEach((s: any) => {
+              totalActual += s.actual;
+              totalBudget += s.budget;
+          });
+      }
+
+      const pct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : 0;
+      const emoji = pct > 100 ? "🚨" : pct > 80 ? "⚠️" : "✅";
+
       let msg = `📊 <b>Budget Performance</b>\n📅 ${formatDate(start)} - ${formatDate(end)}\n\n`;
+      msg += `${emoji} <b>Used vs Budget</b>\n`;
+      msg += `${fmt.format(totalActual)} | ${fmt.format(totalBudget)} (${pct}%)\n`;
+      
+      const buttons = {
+          inline_keyboard: [[
+              { text: "📋 View Details", callback_data: `view_budget_details:${start}:${end}` }
+          ]]
+      };
+      
+      await sendTelegramMessage(chatId, msg, { reply_markup: buttons });
+      return;
+  }
+
+  if (action === "view_budget_details") {
+      const start = parts[1];
+      const end = parts[2];
+      await answerCallbackQuery(query.id, "Loading details...");
+      
+      const stats: any = await getBudgetBreakdown(start, end);
+      const fmt = new Intl.NumberFormat('id-ID');
+      
+      let msg = `📊 <b>Budget Details</b>\n📅 ${formatDate(start)} - ${formatDate(end)}\n\n`;
       if (!stats || stats.length === 0) {
-          msg += "No budget or expenses found for this period.";
+          msg += "No budget or expenses found.";
       } else {
           stats.forEach((s: any) => {
               const pct = s.budget > 0 ? Math.round((s.actual / s.budget) * 100) : 0;
               const emoji = pct > 100 ? "🚨" : pct > 80 ? "⚠️" : "✅";
-              // KRL - 800.500 | 900.000
               msg += `${emoji} <b>${s.cat} - ${s.sub}</b>\n`;
               msg += `${fmt.format(s.actual)} | ${fmt.format(s.budget)} (${pct}%)\n\n`;
           });
