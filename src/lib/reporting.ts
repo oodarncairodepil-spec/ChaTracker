@@ -365,16 +365,13 @@ export async function getBudgetBreakdown(start: string, end: string) {
         .eq("direction", "debit")
         .in("status", ["completed", "paid"]);
 
-    // 2. Get Budget for Start Month (Assuming budget applies to start month of period)
-    const startDate = new Date(start);
-    // Format YYYY-MM-01 manually to avoid timezone issues
-    const year = startDate.getFullYear();
-    const month = String(startDate.getMonth() + 1).padStart(2, '0');
-    const monthStr = `${year}-${month}-01`;
-    
+    // 2. Get Budget from 'budgets' table
+    // Table has period_start_date, period_end_date, budgeted_amount
+    // And linked to subcategories -> categories
     const { data: budgets } = await supabase.from("budgets")
-        .select(`amount, categories(name), subcategories(name)`)
-        .eq("month", monthStr);
+        .select(`budgeted_amount, subcategories(name, categories(name))`)
+        .eq("period_start_date", start)
+        .eq("period_end_date", end);
 
     // 3. Aggregate
     const stats = new Map();
@@ -384,12 +381,13 @@ export async function getBudgetBreakdown(start: string, end: string) {
 
     // Process Budgets
     budgets?.forEach((b: any) => {
-        const cat = b.categories?.name || "Uncategorized";
+        // Access nested properties safely
+        const cat = b.subcategories?.categories?.name || "Uncategorized";
         const sub = b.subcategories?.name || "General";
         const key = getKey(cat, sub);
         
         if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
-        stats.get(key).budget += b.amount;
+        stats.get(key).budget += b.budgeted_amount;
     });
 
     // Process Actuals
