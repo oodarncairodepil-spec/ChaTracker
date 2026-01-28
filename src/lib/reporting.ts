@@ -355,3 +355,54 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
 
     return { txs: paginatedTxs, total };
 }
+
+export async function getBudgetBreakdown(start: string, end: string) {
+    // 1. Get Expenses for period
+    const { data: expenses } = await supabase.from("transactions")
+        .select(`amount, categories(name), subcategories(name)`)
+        .gte("date", start)
+        .lte("date", end)
+        .eq("direction", "debit")
+        .in("status", ["completed", "paid"]);
+
+    // 2. Get Budget for Start Month (Assuming budget applies to start month of period)
+    const startDate = new Date(start);
+    // Format YYYY-MM-01 manually to avoid timezone issues
+    const year = startDate.getFullYear();
+    const month = String(startDate.getMonth() + 1).padStart(2, '0');
+    const monthStr = `${year}-${month}-01`;
+    
+    const { data: budgets } = await supabase.from("budgets")
+        .select(`amount, categories(name), subcategories(name)`)
+        .eq("month", monthStr);
+
+    // 3. Aggregate
+    const stats = new Map();
+
+    // Helper to generate key
+    const getKey = (cat: string, sub: string) => `${cat} - ${sub}`;
+
+    // Process Budgets
+    budgets?.forEach((b: any) => {
+        const cat = b.categories?.name || "Uncategorized";
+        const sub = b.subcategories?.name || "General";
+        const key = getKey(cat, sub);
+        
+        if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
+        stats.get(key).budget += b.amount;
+    });
+
+    // Process Actuals
+    expenses?.forEach((e: any) => {
+        const cat = e.categories?.name || "Uncategorized";
+        const sub = e.subcategories?.name || "General";
+        const key = getKey(cat, sub);
+        
+        if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
+        stats.get(key).actual += e.amount;
+    });
+
+    // Convert to array and sort
+    return Array.from(stats.values())
+        .sort((a: any, b: any) => b.actual - a.actual);
+}

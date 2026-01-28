@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands, setChatMenuButton } from "@/utils/telegram";
-import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod } from "@/lib/reporting";
+import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod, getBudgetBreakdown } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
@@ -242,7 +242,8 @@ async function showPeriodStats(chatId: number, start: string, end: string) {
               { text: "💰 View Income", callback_data: `list_tx:${start}:${end}:income:0` }
           ],
           [
-              { text: "🔄 Recalculate This Period", callback_data: `recalc_period:${start}:${end}` }
+              { text: "🔄 Recalculate This Period", callback_data: `recalc_period:${start}:${end}` },
+              { text: "📊 View Budget", callback_data: `view_budget:${start}:${end}` }
           ]
       ]
   };
@@ -332,6 +333,30 @@ async function handleCallbackQuery(query: any) {
       const start = parts[1];
       const end = parts[2];
       await showPeriodStats(chatId, start, end);
+      return;
+  }
+  if (action === "view_budget") {
+      const start = parts[1];
+      const end = parts[2];
+      await answerCallbackQuery(query.id, "Loading budget...");
+      
+      const stats: any = await getBudgetBreakdown(start, end);
+      const fmt = new Intl.NumberFormat('id-ID');
+      
+      let msg = `📊 <b>Budget Performance</b>\n📅 ${formatDate(start)} - ${formatDate(end)}\n\n`;
+      if (!stats || stats.length === 0) {
+          msg += "No budget or expenses found for this period.";
+      } else {
+          stats.forEach((s: any) => {
+              const pct = s.budget > 0 ? Math.round((s.actual / s.budget) * 100) : 0;
+              const emoji = pct > 100 ? "🚨" : pct > 80 ? "⚠️" : "✅";
+              // KRL - 800.500 | 900.000
+              msg += `${emoji} <b>${s.cat} - ${s.sub}</b>\n`;
+              msg += `${fmt.format(s.actual)} | ${fmt.format(s.budget)} (${pct}%)\n\n`;
+          });
+      }
+      
+      await sendTelegramMessage(chatId, msg);
       return;
   }
   const id = parts[1]; // usually transaction_id
