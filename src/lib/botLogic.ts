@@ -405,9 +405,14 @@ async function handleCallbackQuery(query: any) {
   if (action === "add_budget_sub") {
       await answerCallbackQuery(query.id);
       const subId = parts[1];
-      // Note: subId might be '8434931938' which is NOT a UUID if coming from older data or some misconfiguration.
-      // But the schema expects UUID.
       
+      // Basic UUID validation (8-4-4-4-12 hex digits)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(subId)) {
+          await sendTelegramMessage(chatId, `⚠️ Error: The selected subcategory has an invalid ID format (${subId}). Please contact support or select another.`);
+          return;
+      }
+
       const userId = query.from.id;
       const { data: session } = await supabase.from("bot_sessions").select("*").eq("chat_id", chatId).eq("user_id", userId).single();
       
