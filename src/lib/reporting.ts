@@ -373,7 +373,7 @@ export async function getBudgetBreakdown(start: string, end: string) {
 
     // 2. Get Budgets
     const { data: budgets } = await supabase.from("budgets")
-        .select(`budgeted_amount, subcategory_id`)
+        .select(`budgeted_amount, subcategory_id, category_name`)
         .eq("period_start_date", cleanStart)
         .eq("period_end_date", cleanEnd);
 
@@ -384,14 +384,15 @@ export async function getBudgetBreakdown(start: string, end: string) {
 
     let subMap = new Map();
     if (subIds.size > 0) {
+        // Removed 'categories(name)' join to avoid RLS/FK issues
         const { data: subs } = await supabase.from("subcategories")
-            .select(`id, name, categories(name)`)
+            .select(`id, name`)
             .in("id", Array.from(subIds));
         
         subs?.forEach((s: any) => {
             subMap.set(s.id, {
                 sub: s.name,
-                cat: s.categories?.name || "Uncategorized"
+                cat: "Category" // Placeholder since we removed join
             });
         });
     }
@@ -405,16 +406,26 @@ export async function getBudgetBreakdown(start: string, end: string) {
     // Process Budgets
     budgets?.forEach((b: any) => {
         if (!b.subcategory_id) return;
-        const info = subMap.get(b.subcategory_id) || { cat: "Unknown", sub: "Unknown" };
-        const key = getKey(info.cat, info.sub);
         
-        if (!stats.has(key)) stats.set(key, { cat: info.cat, sub: info.sub, budget: 0, actual: 0 });
+        // Use map or fallback to category_name from budget table
+        let info = subMap.get(b.subcategory_id);
+        if (!info && b.category_name) {
+             info = { cat: "Budget", sub: b.category_name };
+             // Update map for future lookups (e.g. expenses matching this ID)
+             subMap.set(b.subcategory_id, info);
+        }
+        
+        const cat = info?.cat || "Unknown";
+        const sub = info?.sub || "Unknown";
+        const key = getKey(cat, sub);
+        
+        if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
         stats.get(key).budget += b.budgeted_amount;
     });
 
     // Process Actuals
     expenses?.forEach((e: any) => {
-        if (!e.category) return; // Use 'category' column as subcategory_id
+        if (!e.category) return;
         const info = subMap.get(e.category) || { cat: "Unknown", sub: "Unknown" };
         const key = getKey(info.cat, info.sub);
         
