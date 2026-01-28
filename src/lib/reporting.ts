@@ -465,57 +465,49 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
     return 0;
 }
 
-export async function saveBudget(start: string, end: string, subId: string, amount: number, userId: string) {
+// Bot user UUID to use for all budgets (since we use Telegram IDs which are numeric, not UUIDs)
+const BOT_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+export async function saveBudget(start: string, end: string, subId: string, amount: number, telegramUserId: string) {
     // 0. Validate UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!subId || !uuidRegex.test(subId)) {
         return { message: `Invalid Subcategory ID: ${subId}. Please restart the process.` };
     }
 
-    // 1. Check if exists (using telegram numeric userId for uniqueness context)
+    // 1. Check if budget exists (by period and subcategory)
     const { data: existing } = await supabase.from("budgets")
         .select("id")
         .eq("period_start_date", start)
         .eq("subcategory_id", subId)
-        .single();
+        .maybeSingle();
 
     let error;
 
     if (existing) {
-        // Update (omit user_id if it's numeric/invalid for UUID column)
-        const updateData: any = {
+        // Update
+        const res = await supabase.from("budgets").update({
             budgeted_amount: amount,
             updated_at: new Date().toISOString()
-        };
-        // Only add user_id if it's a valid UUID
-        if (uuidRegex.test(userId)) {
-            updateData.user_id = userId;
-        }
-        
-        const res = await supabase.from("budgets").update(updateData).eq("id", existing.id);
+        }).eq("id", existing.id);
         error = res.error;
     } else {
-        // Insert (omit user_id if it's numeric/invalid for UUID column)
-        const insertData: any = {
+        // Insert with bot user ID
+        const res = await supabase.from("budgets").insert({
+            user_id: BOT_USER_ID,
             period_start_date: start,
             period_end_date: end,
             subcategory_id: subId,
             budgeted_amount: amount,
             period_type: "monthly",
             updated_at: new Date().toISOString()
-        };
-        // Only add user_id if it's a valid UUID
-        if (uuidRegex.test(userId)) {
-            insertData.user_id = userId;
-        }
-        
-        const res = await supabase.from("budgets").insert(insertData);
+        });
         error = res.error;
     }
 
     if (error) return error;
 
-    // 2. Trigger Recalculation (Async)
+    // 2. Trigger Recalculation
     await recalculateAllSummaries();
 
     return null;
