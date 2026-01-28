@@ -465,6 +465,9 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
     return 0;
 }
 
+// Bot user UUID to use for all budgets (since we use Telegram IDs which are numeric, not UUIDs)
+const BOT_USER_ID = "354ef27f-64ae-4c6a-8833-2ee14885331e";
+
 export async function saveBudget(start: string, end: string, subId: string, amount: number, telegramUserId: string) {
     // 0. Validate UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -505,12 +508,13 @@ export async function saveBudget(start: string, end: string, subId: string, amou
 
     if (existing) {
         const res = await supabase.from("budgets").update({
-            budgeted_amount: amount,
-            updated_at: new Date().toISOString()
+            user_id: BOT_USER_ID,
+            budgeted_amount: amount
         }).eq("id", existing.id);
         error = res.error;
     } else {
         const res = await supabase.from("budgets").insert({
+            user_id: BOT_USER_ID,
             period_start_date: start,
             period_end_date: end,
             subcategory_id: subId,
@@ -518,8 +522,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
             period_type: "monthly",
             category_name: catData.name,
             main_category_id: catData.id,
-            category_type: "expense",
-            updated_at: new Date().toISOString()
+            category_type: "expense"
         });
         error = res.error;
     }
