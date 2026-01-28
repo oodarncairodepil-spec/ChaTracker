@@ -357,40 +357,21 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
 }
 
 export async function getBudgetBreakdown(start: string, end: string) {
-    // 1. Get Expenses for period (Group by subcategory_id)
+    // 1. Get Expenses with Names (Join directly)
     const { data: expenses } = await supabase.from("transactions")
-        .select(`amount, subcategory_id`)
+        .select(`amount, subcategory_id, subcategories(name, categories(name))`)
         .gte("date", start)
         .lte("date", end)
         .eq("direction", "debit")
         .in("status", ["completed", "paid"]);
 
-    // 2. Get Budget from 'budgets' table (Group by subcategory_id)
+    // 2. Get Budgets with Names (Join directly)
     const { data: budgets } = await supabase.from("budgets")
-        .select(`budgeted_amount, subcategory_id`)
+        .select(`budgeted_amount, subcategory_id, subcategories(name, categories(name))`)
         .eq("period_start_date", start)
         .eq("period_end_date", end);
 
-    // 3. Fetch Names for all involved Subcategories
-    const subIds = new Set<string>();
-    expenses?.forEach((e: any) => e.subcategory_id && subIds.add(e.subcategory_id));
-    budgets?.forEach((b: any) => b.subcategory_id && subIds.add(b.subcategory_id));
-
-    let subMap = new Map();
-    if (subIds.size > 0) {
-        const { data: subs } = await supabase.from("subcategories")
-            .select(`id, name, categories(name)`)
-            .in("id", Array.from(subIds));
-        
-        subs?.forEach((s: any) => {
-            subMap.set(s.id, {
-                sub: s.name,
-                cat: s.categories?.name || "Uncategorized"
-            });
-        });
-    }
-
-    // 4. Aggregate
+    // 3. Aggregate
     const stats = new Map();
 
     // Helper to generate key
@@ -398,21 +379,23 @@ export async function getBudgetBreakdown(start: string, end: string) {
 
     // Process Budgets
     budgets?.forEach((b: any) => {
-        if (!b.subcategory_id) return;
-        const info = subMap.get(b.subcategory_id) || { cat: "Unknown", sub: "Unknown" };
-        const key = getKey(info.cat, info.sub);
+        // Access nested properties
+        const cat = b.subcategories?.categories?.name || "Uncategorized";
+        const sub = b.subcategories?.name || "General";
+        const key = getKey(cat, sub);
         
-        if (!stats.has(key)) stats.set(key, { cat: info.cat, sub: info.sub, budget: 0, actual: 0 });
+        if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
         stats.get(key).budget += b.budgeted_amount;
     });
 
     // Process Actuals
     expenses?.forEach((e: any) => {
-        if (!e.subcategory_id) return;
-        const info = subMap.get(e.subcategory_id) || { cat: "Unknown", sub: "Unknown" };
-        const key = getKey(info.cat, info.sub);
+        // Access nested properties
+        const cat = e.subcategories?.categories?.name || "Uncategorized";
+        const sub = e.subcategories?.name || "General";
+        const key = getKey(cat, sub);
         
-        if (!stats.has(key)) stats.set(key, { cat: info.cat, sub: info.sub, budget: 0, actual: 0 });
+        if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
         stats.get(key).actual += e.amount;
     });
 
