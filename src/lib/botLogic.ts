@@ -734,6 +734,15 @@ async function handleStateInput(chatId: number, text: string, session: any) {
         }
         
         const { subId, start, end } = context;
+
+        // Validation for subId from context (handling legacy/broken sessions)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!subId || !uuidRegex.test(subId)) {
+             await sendTelegramMessage(chatId, `⚠️ Error: The selected subcategory ID is invalid (${subId}). Please select the category again.`);
+             await updateSession(session.id, "idle", {});
+             return;
+        }
+
         // Save
         const error = await saveBudget(start, end, subId, amount, session.user_id);
         
