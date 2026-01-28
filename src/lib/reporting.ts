@@ -472,12 +472,9 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         return { message: `Invalid Subcategory ID: ${subId}. Please restart the process.` };
     }
 
-    // 1. Upsert Budget
-    
-    // Check if exists
+    // 1. Check if exists (using telegram numeric userId for uniqueness context)
     const { data: existing } = await supabase.from("budgets")
         .select("id")
-        .eq("user_id", userId)
         .eq("period_start_date", start)
         .eq("subcategory_id", subId)
         .single();
@@ -485,40 +482,40 @@ export async function saveBudget(start: string, end: string, subId: string, amou
     let error;
 
     if (existing) {
-        // Update
-        const res = await supabase.from("budgets").update({
+        // Update (omit user_id if it's numeric/invalid for UUID column)
+        const updateData: any = {
             budgeted_amount: amount,
             updated_at: new Date().toISOString()
-        }).eq("id", existing.id);
+        };
+        // Only add user_id if it's a valid UUID
+        if (uuidRegex.test(userId)) {
+            updateData.user_id = userId;
+        }
+        
+        const res = await supabase.from("budgets").update(updateData).eq("id", existing.id);
         error = res.error;
     } else {
-        // Insert
-        const res = await supabase.from("budgets").insert({
-            user_id: userId,
+        // Insert (omit user_id if it's numeric/invalid for UUID column)
+        const insertData: any = {
             period_start_date: start,
             period_end_date: end,
             subcategory_id: subId,
             budgeted_amount: amount,
             period_type: "monthly",
             updated_at: new Date().toISOString()
-        });
+        };
+        // Only add user_id if it's a valid UUID
+        if (uuidRegex.test(userId)) {
+            insertData.user_id = userId;
+        }
+        
+        const res = await supabase.from("budgets").insert(insertData);
         error = res.error;
     }
 
     if (error) return error;
 
     // 2. Trigger Recalculation (Async)
-    // We don't await this to keep UI responsive, but in serverless we must ensure it runs.
-    // However, recalculateAllSummaries updates 'period_summaries' table based on budgets.
-    
-    // NOTE: recalculateAllSummaries currently reads from 'budget_performance_summary' view
-    // which aggregates from 'budgets' table. So updating 'budgets' table first is correct.
-    
-    // We should run recalculate for this specific period to update 'period_summaries'
-    // But our function recalculateAllSummaries does ALL periods.
-    // Ideally we filter, but for now we just call it.
-    
-    // We need to wait for it here because Vercel/Serverless might kill the process.
     await recalculateAllSummaries();
 
     return null;
