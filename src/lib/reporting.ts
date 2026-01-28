@@ -386,11 +386,14 @@ export async function getBudgetBreakdown(start: string, end: string) {
     
     // Strategy: Load ALL mappings to ensure we find everything (Robust fallback)
     // A. Load New Schema (and check for legacy columns like main_category_id)
-    const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, category_id, main_category_id");
+    // Note: Based on inspection, 'subcategories' table has 'main_category_id' but NOT 'category_id'.
+    // We select both to be safe, but we know 'main_category_id' is the one.
+    const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, main_category_id");
     const { data: allNewCats } = await supabase.from("categories").select("id, name");
     
-    // B. Load Legacy Schema
-    const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("id, name, parent_id, main_category_name");
+    // B. Load Legacy Schema (View)
+    // Note: 'categories_with_hierarchy' has 'subcategory_id' (which is the ID), 'subcategory_name', 'main_category_id', 'main_category_name'
+    const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("subcategory_id, subcategory_name, main_category_id, main_category_name");
     const { data: allLegacyCats } = await supabase.from("main_categories").select("id, name");
 
     // Build Category Map (ID -> Name)
@@ -399,22 +402,25 @@ export async function getBudgetBreakdown(start: string, end: string) {
     allLegacyCats?.forEach((c: any) => catNameMap.set(c.id, c.name));
 
     // Build Subcategory Map (ID -> { sub, cat })
-    // Prioritize New Schema
+    
+    // 1. From New Schema
     allNewSubs?.forEach((s: any) => {
-        const catId = s.category_id || s.main_category_id;
+        // s.category_id might not exist, use main_category_id
+        const catId = s.main_category_id; // || s.category_id
         const catName = catNameMap.get(catId) || "Unknown Category";
         subMap.set(s.id, { sub: s.name, cat: catName });
     });
 
-    // Fill gaps with Legacy Schema
+    // 2. From Legacy View (categories_with_hierarchy)
+    // Map 'subcategory_id' to ID
     allLegacySubs?.forEach((s: any) => {
-        if (!subMap.has(s.id)) {
-            // Try to get name from ID map, fallback to explicit main_category_name if available in view
-            let catName = catNameMap.get(s.parent_id);
-            if (!catName && s.main_category_name) {
-                catName = s.main_category_name;
-            }
-            subMap.set(s.id, { sub: s.name, cat: catName || "Unknown Category" });
+        if (!subMap.has(s.subcategory_id)) {
+            // Use explicit name from view if available
+            const catName = s.main_category_name || catNameMap.get(s.main_category_id) || "Unknown Category";
+            subMap.set(s.subcategory_id, { 
+                sub: s.subcategory_name || s.name, // view might have 'name' or 'subcategory_name'
+                cat: catName 
+            });
         }
     });
 
