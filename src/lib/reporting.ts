@@ -390,7 +390,7 @@ export async function getBudgetBreakdown(start: string, end: string) {
     const { data: allNewCats } = await supabase.from("categories").select("id, name");
     
     // B. Load Legacy Schema
-    const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("id, name, parent_id");
+    const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("id, name, parent_id, main_category_name");
     const { data: allLegacyCats } = await supabase.from("main_categories").select("id, name");
 
     // Build Category Map (ID -> Name)
@@ -409,8 +409,12 @@ export async function getBudgetBreakdown(start: string, end: string) {
     // Fill gaps with Legacy Schema
     allLegacySubs?.forEach((s: any) => {
         if (!subMap.has(s.id)) {
-            const catName = catNameMap.get(s.parent_id) || "Unknown Category";
-            subMap.set(s.id, { sub: s.name, cat: catName });
+            // Try to get name from ID map, fallback to explicit main_category_name if available in view
+            let catName = catNameMap.get(s.parent_id);
+            if (!catName && s.main_category_name) {
+                catName = s.main_category_name;
+            }
+            subMap.set(s.id, { sub: s.name, cat: catName || "Unknown Category" });
         }
     });
 
