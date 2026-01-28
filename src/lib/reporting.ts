@@ -475,7 +475,29 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         return { message: `Invalid Subcategory ID: ${subId}. Please restart the process.` };
     }
 
-    // 1. Check if budget exists (by period and subcategory)
+    // 1. Get subcategory info to populate required fields
+    const { data: subData } = await supabase
+        .from("subcategories")
+        .select("id, name, category_id")
+        .eq("id", subId)
+        .single();
+    
+    if (!subData) {
+        return { message: `Subcategory not found: ${subId}` };
+    }
+
+    // Get category info
+    const { data: catData } = await supabase
+        .from("categories")
+        .select("id, name")
+        .eq("id", subData.category_id)
+        .single();
+
+    if (!catData) {
+        return { message: `Category not found for subcategory` };
+    }
+
+    // 2. Check if budget exists
     const { data: existing } = await supabase.from("budgets")
         .select("id")
         .eq("period_start_date", start)
@@ -485,14 +507,12 @@ export async function saveBudget(start: string, end: string, subId: string, amou
     let error;
 
     if (existing) {
-        // Update
         const res = await supabase.from("budgets").update({
             budgeted_amount: amount,
             updated_at: new Date().toISOString()
         }).eq("id", existing.id);
         error = res.error;
     } else {
-        // Insert with bot user ID
         const res = await supabase.from("budgets").insert({
             user_id: BOT_USER_ID,
             period_start_date: start,
@@ -500,6 +520,9 @@ export async function saveBudget(start: string, end: string, subId: string, amou
             subcategory_id: subId,
             budgeted_amount: amount,
             period_type: "monthly",
+            category_name: catData.name,
+            main_category_id: catData.id,
+            category_type: "expense",
             updated_at: new Date().toISOString()
         });
         error = res.error;
@@ -507,7 +530,6 @@ export async function saveBudget(start: string, end: string, subId: string, amou
 
     if (error) return error;
 
-    // 2. Trigger Recalculation
     await recalculateAllSummaries();
 
     return null;
