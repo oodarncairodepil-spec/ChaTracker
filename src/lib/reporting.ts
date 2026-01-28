@@ -475,7 +475,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
     // 1. Get subcategory info to populate required fields
     const { data: subData } = await supabase
         .from("subcategories")
-        .select("id, name, category_id")
+        .select("id, name, main_category_id")
         .eq("id", subId)
         .single();
     
@@ -487,7 +487,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
     const { data: catData } = await supabase
         .from("categories")
         .select("id, name")
-        .eq("id", subData.category_id)
+        .eq("id", subData.main_category_id)
         .single();
 
     if (!catData) {
