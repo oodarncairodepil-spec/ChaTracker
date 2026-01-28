@@ -466,6 +466,12 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
 }
 
 export async function saveBudget(start: string, end: string, subId: string, amount: number, userId: string) {
+    // 0. Validate UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!subId || !uuidRegex.test(subId)) {
+        return { message: `Invalid Subcategory ID: ${subId}. Please restart the process.` };
+    }
+
     // 1. Upsert Budget
     
     // Check if exists
