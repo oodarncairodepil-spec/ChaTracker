@@ -164,7 +164,7 @@ export async function getPeriodStats(start: string, end: string) {
     // Calculate Total Expense and Income from transactions
     const { data: txs, error: txError } = await supabase
         .from("transactions")
-        .select("amount, direction, type")
+        .select("amount, direction, type, description, merchant")
         .in("status", ["completed", "paid"])
         .gte("date", start)
         .lte("date", end);
@@ -238,7 +238,7 @@ export async function recalculateAllSummaries() {
         // Note: Data might use 'date' column instead of 'happened_at'
         // And status might be 'paid' instead of 'completed'
         const { data: txs } = await supabase.from("transactions")
-            .select("amount, direction, type")
+            .select("amount, direction, type, description, merchant")
             .in("status", ["completed", "paid"]) 
             .gte("date", p.start)
             .lte("date", p.end);
