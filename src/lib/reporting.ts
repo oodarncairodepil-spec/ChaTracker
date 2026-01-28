@@ -396,6 +396,97 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
     return { txs: paginatedTxs, total };
 }
 
+export async function getAllSubcategories() {
+    // Load ALL mappings to ensure we find everything (Robust fallback)
+    // A. Load New Schema (and check for legacy columns like main_category_id)
+    const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, main_category_id");
+    const { data: allNewCats } = await supabase.from("categories").select("id, name");
+    
+    // B. Load Legacy Schema (View)
+    const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("subcategory_id, subcategory_name, main_category_id, main_category_name");
+    const { data: allLegacyCats } = await supabase.from("main_categories").select("id, name");
+
+    // Build Category Map (ID -> Name)
+    const catNameMap = new Map();
+    allNewCats?.forEach((c: any) => catNameMap.set(c.id, c.name));
+    allLegacyCats?.forEach((c: any) => catNameMap.set(c.id, c.name));
+
+    const grouped: Record<string, { id: string, name: string }[]> = {};
+
+    const add = (catName: string, sub: { id: string, name: string }) => {
+        if (!grouped[catName]) grouped[catName] = [];
+        // Avoid duplicates
+        if (!grouped[catName].some(s => s.id === sub.id)) {
+            grouped[catName].push(sub);
+        }
+    };
+
+    // 1. From New Schema
+    allNewSubs?.forEach((s: any) => {
+        const catId = s.main_category_id;
+        const catName = catNameMap.get(catId) || "Unknown Category";
+        add(catName, { id: s.id, name: s.name });
+    });
+
+    // 2. From Legacy View (categories_with_hierarchy)
+    allLegacySubs?.forEach((s: any) => {
+        const catName = s.main_category_name || catNameMap.get(s.main_category_id) || "Unknown Category";
+        add(catName, { 
+            id: s.subcategory_id, 
+            name: s.subcategory_name || s.name // view might have 'name' or 'subcategory_name'
+        });
+    });
+    
+    // Sort subcategories by name
+    Object.keys(grouped).forEach(k => {
+        grouped[k].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    return grouped;
+}
+
+export async function getPreviousBudget(subId: string, currentStart: string) {
+    // Find the budget for the period immediately preceding the current one
+    // Assuming monthly periods... roughly -1 month
+    const start = new Date(currentStart);
+    start.setMonth(start.getMonth() - 1);
+    
+    // Or just query the latest budget for this subId that is BEFORE currentStart
+    const { data: budgets } = await supabase.from("budgets")
+        .select("budgeted_amount")
+        .eq("subcategory_id", subId)
+        .lt("period_start_date", currentStart)
+        .order("period_start_date", { ascending: false })
+        .limit(1);
+
+    if (budgets && budgets.length > 0) {
+        return budgets[0].budgeted_amount;
+    }
+    return 0;
+}
+
+export async function saveBudget(start: string, end: string, subId: string, amount: number, userId: string) {
+    // Upsert budget
+    // Need to get category info first to populate denormalized fields if any
+    // For now, we assume 'subcategory_id' is enough for uniqueness/FK if schema allows
+    // But budgets table has 'period_start_date' etc.
+
+    // Note: The budgets table schema from user input earlier:
+    // period_start_date, period_end_date, subcategory_id, budgeted_amount, user_id, ...
+    
+    const { error } = await supabase.from("budgets").upsert({
+        user_id: userId,
+        period_start_date: start,
+        period_end_date: end,
+        subcategory_id: subId,
+        budgeted_amount: amount,
+        period_type: "monthly",
+        // category_name: ... // Optional, if we want to denormalize
+        updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id, period_start_date, subcategory_id' }); // Assuming unique constraint exists
+
+    return error;
+}
 export async function getBudgetBreakdown(start: string, end: string) {
     // Ensure dates are YYYY-MM-DD
     const cleanStart = new Date(start).toISOString().split('T')[0];
