@@ -363,12 +363,75 @@ async function handleCallbackQuery(query: any) {
       msg += `${fmt.format(totalActual)} | ${fmt.format(totalBudget)} (${pct}%)\n`;
       
       const buttons = {
-          inline_keyboard: [[
+          inline_keyboard: [
+            [
               { text: "📋 View Details", callback_data: `view_budget_details:${start}:${end}` }
-          ]]
+            ],
+            [
+              { text: "📂 View by Category", callback_data: `view_budget_category:${start}:${end}` }
+            ]
+          ]
       };
       
       await sendTelegramMessage(chatId, msg, { reply_markup: buttons });
+      return;
+  }
+
+  if (action === "view_budget_category") {
+      const start = parts[1];
+      const end = parts[2];
+      await answerCallbackQuery(query.id, "Loading category view...");
+      
+      const stats: any = await getBudgetBreakdown(start, end);
+      const fmt = new Intl.NumberFormat('id-ID');
+      
+      let msg = `📊 <b>Budget by Category</b>\n📅 ${formatDate(start)} - ${formatDate(end)}\n\n`;
+      if (!stats || stats.length === 0) {
+          msg += "No budget or expenses found.";
+      } else {
+          // Group by Category
+          const grouped: Record<string, { actual: number, budget: number, subs: any[] }> = {};
+          
+          stats.forEach((s: any) => {
+              if (!grouped[s.cat]) {
+                  grouped[s.cat] = { actual: 0, budget: 0, subs: [] };
+              }
+              grouped[s.cat].actual += s.actual;
+              grouped[s.cat].budget += s.budget;
+              grouped[s.cat].subs.push(s);
+          });
+
+          // Sort Categories by Total Exceed Percentage Descending
+          const sortedCats = Object.entries(grouped).sort(([, a], [, b]) => {
+              const pctA = a.budget > 0 ? (a.actual / a.budget) : 0;
+              const pctB = b.budget > 0 ? (b.actual / b.budget) : 0;
+              return pctB - pctA;
+          });
+
+          sortedCats.forEach(([catName, data]) => {
+              const catPct = data.budget > 0 ? Math.round((data.actual / data.budget) * 100) : 0;
+              const catEmoji = catPct > 100 ? "🚨" : catPct > 80 ? "⚠️" : "✅"; // Logic: >100 red, >80 warning, else ok
+              // Use warning for >80% as per user example (95% is warning)
+
+              msg += `<b>${catName}</b> ${fmt.format(data.actual)} | ${fmt.format(data.budget)} (${catPct}%) ${catEmoji}\n`;
+
+              // Sort Subcategories by Pct Descending
+              data.subs.sort((a: any, b: any) => {
+                  const pA = a.budget > 0 ? a.actual / a.budget : 0;
+                  const pB = b.budget > 0 ? b.actual / b.budget : 0;
+                  return pB - pA;
+              });
+
+              data.subs.forEach((s: any) => {
+                  const sPct = s.budget > 0 ? Math.round((s.actual / s.budget) * 100) : 0;
+                  const sEmoji = sPct > 100 ? "🚨" : sPct > 80 ? "⚠️" : "✅";
+                  msg += `  ${s.sub}: ${fmt.format(s.actual)} | ${fmt.format(s.budget)} (${sPct}%) ${sEmoji}\n`;
+              });
+              msg += "\n";
+          });
+      }
+      
+      await sendTelegramMessage(chatId, msg);
       return;
   }
 
