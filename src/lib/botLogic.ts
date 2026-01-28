@@ -146,14 +146,55 @@ async function showPeriodMenu(chatId: number) {
     return;
   }
 
-  const buttons = periods.map((p: any) => [{
-    text: `${formatDate(p.start)} - ${formatDate(p.end)}`,
-    callback_data: `period:${p.start}:${p.end}`
+  // Sort descending
+  periods.sort((a: any, b: any) => new Date(b.start).getTime() - new Date(a.start).getTime());
+  const latest = periods[0];
+
+  const years = new Set<string>();
+  periods.forEach((p: any) => {
+      years.add(new Date(p.start).getFullYear().toString());
+      years.add(new Date(p.end).getFullYear().toString());
+  });
+  
+  const sortedYears = Array.from(years).sort().reverse();
+  const buttons = [];
+
+  // Latest
+  buttons.push([{
+    text: `⚡️ Latest: ${formatDate(latest.start)} - ${formatDate(latest.end)}`,
+    callback_data: `period:${latest.start}:${latest.end}`
   }]);
 
-  await sendTelegramMessage(chatId, "Select a Period:", {
+  // Years
+  sortedYears.forEach(year => {
+      buttons.push([{ text: `📅 ${year}`, callback_data: `year_periods:${year}` }]);
+  });
+
+  await sendTelegramMessage(chatId, "Select Period Option:", {
     reply_markup: { inline_keyboard: buttons }
   });
+}
+
+async function showPeriodsForYear(chatId: number, year: string) {
+    const periods = await getAvailablePeriods();
+    // Filter periods that overlap with year
+    const filtered = periods.filter((p: any) => {
+        const s = new Date(p.start).getFullYear().toString();
+        const e = new Date(p.end).getFullYear().toString();
+        return s === year || e === year;
+    });
+    
+    // Sort descending
+    filtered.sort((a: any, b: any) => new Date(b.start).getTime() - new Date(a.start).getTime());
+
+    const buttons = filtered.map((p: any) => [{
+        text: `${formatDate(p.start)} - ${formatDate(p.end)}`,
+        callback_data: `period:${p.start}:${p.end}`
+    }]);
+
+    await sendTelegramMessage(chatId, `Periods in ${year}:`, {
+        reply_markup: { inline_keyboard: buttons }
+    });
 }
 
 function formatDate(dateStr: string): string {
@@ -264,6 +305,12 @@ async function handleCallbackQuery(query: any) {
       const end = parts[2];
       await answerCallbackQuery(query.id, "Loading...");
       await showPeriodStats(chatId, start, end);
+      return;
+  }
+  if (action === "year_periods") {
+      const year = parts[1];
+      await answerCallbackQuery(query.id, `Loading ${year}...`);
+      await showPeriodsForYear(chatId, year);
       return;
   }
   if (action === "list_tx") {
