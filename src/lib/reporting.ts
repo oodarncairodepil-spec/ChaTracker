@@ -384,15 +384,29 @@ export async function getBudgetBreakdown(start: string, end: string) {
 
     let subMap = new Map();
     if (subIds.size > 0) {
-        // Removed 'categories(name)' join to avoid RLS/FK issues
+        // Fetch subcategories with category_id
         const { data: subs } = await supabase.from("subcategories")
-            .select(`id, name`)
+            .select(`id, name, category_id`)
             .in("id", Array.from(subIds));
+
+        // Fetch categories to map names
+        const catIds = new Set();
+        subs?.forEach((s: any) => s.category_id && catIds.add(s.category_id));
+
+        const catMap = new Map();
+        if (catIds.size > 0) {
+            const { data: cats } = await supabase.from("categories")
+                .select(`id, name`)
+                .in("id", Array.from(catIds));
+            
+            cats?.forEach((c: any) => catMap.set(c.id, c.name));
+        }
         
         subs?.forEach((s: any) => {
+            const catName = catMap.get(s.category_id) || "Unknown Category";
             subMap.set(s.id, {
                 sub: s.name,
-                cat: "Category" // Placeholder since we removed join
+                cat: catName
             });
         });
     }
