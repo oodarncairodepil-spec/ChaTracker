@@ -483,9 +483,9 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         return { message: `Subcategory not found: ${subId}` };
     }
 
-    // Get category info
+    // Get category info from main_categories table
     const { data: catData } = await supabase
-        .from("categories")
+        .from("main_categories")
         .select("id, name")
         .eq("id", subData.main_category_id)
         .single();
