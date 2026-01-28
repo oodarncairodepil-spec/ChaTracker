@@ -384,11 +384,16 @@ async function handleCallbackQuery(query: any) {
       if (!stats || stats.length === 0) {
           msg += "No budget or expenses found.";
       } else {
-          stats.forEach((s: any) => {
-              const pct = s.budget > 0 ? Math.round((s.actual / s.budget) * 100) : 0;
-              const emoji = pct > 100 ? "🚨" : pct > 80 ? "⚠️" : "✅";
-              msg += `${emoji} <b>${s.cat} - ${s.sub}</b>\n`;
-              msg += `${fmt.format(s.actual)} | ${fmt.format(s.budget)} (${pct}%)\n\n`;
+          // Calculate percentage and sort by percentage descending
+          const sortedStats = stats.map((s: any) => ({
+              ...s,
+              pct: s.budget > 0 ? Math.round((s.actual / s.budget) * 100) : 0
+          })).sort((a: any, b: any) => b.pct - a.pct);
+
+          sortedStats.forEach((s: any) => {
+              const emoji = s.pct > 100 ? "🚨" : s.pct > 80 ? "⚠️" : "✅";
+              // Format: "Subcategory: Actual | Budget (Pct%) Emoji"
+              msg += `${s.sub}: ${fmt.format(s.actual)} | ${fmt.format(s.budget)} (${s.pct}%) ${emoji}\n`;
           });
       }
       
