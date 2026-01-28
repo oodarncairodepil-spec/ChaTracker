@@ -80,12 +80,16 @@ async function handleCommand(chatId: number, text: string, session: any) {
       
       await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🤖💰\nSelect an option below:", {
         reply_markup: {
-          keyboard: [
-            [{ text: "Today" }, { text: "Period" }],
-            [{ text: "Recalculate" }, { text: "Pending" }]
-          ],
-          resize_keyboard: true,
-          persistent: true
+          inline_keyboard: [
+            [
+              { text: "📅 Today", callback_data: "menu_today" },
+              { text: "📊 Period", callback_data: "menu_period" }
+            ],
+            [
+              { text: "🔄 Recalculate", callback_data: "menu_recalculate" },
+              { text: "⏳ Pending", callback_data: "menu_pending" }
+            ]
+          ]
         }
       });
     } else if (isPending) {
@@ -306,6 +310,33 @@ async function handleCallbackQuery(query: any) {
   // data format: action:id:extra
   const parts = data.split(":");
   const action = parts[0];
+
+  if (action === "menu_today") {
+      await answerCallbackQuery(query.id);
+      await showToday(chatId);
+      return;
+  }
+  if (action === "menu_period") {
+      await answerCallbackQuery(query.id);
+      await showPeriodMenu(chatId);
+      return;
+  }
+  if (action === "menu_recalculate") {
+      await answerCallbackQuery(query.id, "Recalculating...");
+      await sendTelegramMessage(chatId, "⏳ Recalculating budget summaries... this may take a moment.");
+      const result: any = await recalculateAllSummaries();
+      if (result.error) {
+          await sendTelegramMessage(chatId, `⚠️ Error: ${result.error}`);
+      } else {
+          await sendTelegramMessage(chatId, `✅ Done! Updated ${result.count} summary rows.`);
+      }
+      return;
+  }
+  if (action === "menu_pending") {
+      await answerCallbackQuery(query.id);
+      await showPendingTransactions(chatId);
+      return;
+  }
 
   if (action === "period") {
       const start = parts[1];
