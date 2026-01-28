@@ -385,9 +385,28 @@ export async function getBudgetBreakdown(start: string, end: string) {
     let subMap = new Map();
     if (subIds.size > 0) {
         // Fetch subcategories with category_id
-        const { data: subs } = await supabase.from("subcategories")
+        let { data: subs } = await supabase.from("subcategories")
             .select(`id, name, category_id`)
             .in("id", Array.from(subIds));
+
+        // Fallback: Try 'categories_with_hierarchy' for missing subcategories
+        const foundSubIds = new Set(subs?.map((s: any) => s.id) || []);
+        const missingSubIds = Array.from(subIds).filter(id => !foundSubIds.has(id));
+
+        if (missingSubIds.length > 0) {
+             const { data: hierSubs } = await supabase.from("categories_with_hierarchy")
+                .select(`id, name, parent_id`)
+                .in("id", missingSubIds);
+             
+             if (hierSubs) {
+                 const mapped = hierSubs.map((s: any) => ({
+                     id: s.id,
+                     name: s.name,
+                     category_id: s.parent_id
+                 }));
+                 subs = [...(subs || []), ...mapped];
+             }
+        }
 
         // Fetch categories to map names
         const catIds = new Set();
@@ -395,11 +414,23 @@ export async function getBudgetBreakdown(start: string, end: string) {
 
         const catMap = new Map();
         if (catIds.size > 0) {
+            // 1. Try 'categories'
             const { data: cats } = await supabase.from("categories")
                 .select(`id, name`)
                 .in("id", Array.from(catIds));
             
             cats?.forEach((c: any) => catMap.set(c.id, c.name));
+
+            // 2. Try 'main_categories' for missing
+            const foundCatIds = new Set(cats?.map((c: any) => c.id) || []);
+            const missingCatIds = Array.from(catIds).filter((id: any) => !foundCatIds.has(id));
+
+            if (missingCatIds.length > 0) {
+                const { data: mainCats } = await supabase.from("main_categories")
+                    .select(`id, name`)
+                    .in("id", missingCatIds);
+                mainCats?.forEach((c: any) => catMap.set(c.id, c.name));
+            }
         }
         
         subs?.forEach((s: any) => {
