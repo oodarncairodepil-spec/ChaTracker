@@ -89,6 +89,36 @@ export async function getTodaySummary() {
     };
 }
 
+export function calculateCurrentPeriod() {
+    const today = new Date();
+    const day = today.getDate();
+    let startMonth = today.getMonth();
+    let startYear = today.getFullYear();
+
+    // If before the 3rd, it belongs to previous month's period
+    if (day < 3) {
+        startMonth--;
+        if (startMonth < 0) {
+            startMonth = 11;
+            startYear--;
+        }
+    }
+
+    const start = new Date(startYear, startMonth, 3);
+    const end = new Date(startYear, startMonth + 1, 2);
+
+    // Format YYYY-MM-DD local time
+    const toLocalISO = (d: Date) => {
+        const offset = d.getTimezoneOffset() * 60000;
+        return new Date(d.getTime() - offset).toISOString().split('T')[0];
+    };
+
+    return {
+        start: toLocalISO(start),
+        end: toLocalISO(end)
+    };
+}
+
 export async function getAvailablePeriods() {
     // Read from the new table 'period_summaries' first
     const { data: periods, error } = await supabase
@@ -101,26 +131,36 @@ export async function getAvailablePeriods() {
         // Fallback to view if table is empty
     }
 
+    let uniquePeriods: { start: string, end: string }[] = [];
+
     if (periods && periods.length > 0) {
-        return periods.map(p => ({ start: p.period_start_date, end: p.period_end_date }));
-    }
-
-    // Fallback: Get from view if table not populated yet
-    const { data: viewPeriods } = await supabase
-        .from("budget_performance_summary")
-        .select("period_start_date, period_end_date")
-        .order("period_start_date", { ascending: false });
-        
-    if (!viewPeriods) return [];
-
-    const seen = new Set();
-    const uniquePeriods: { start: string, end: string }[] = [];
-    for (const p of viewPeriods) {
-        if (!seen.has(p.period_start_date)) {
-            seen.add(p.period_start_date);
-            uniquePeriods.push({ start: p.period_start_date, end: p.period_end_date });
+        uniquePeriods = periods.map(p => ({ start: p.period_start_date, end: p.period_end_date }));
+    } else {
+        // Fallback: Get from view if table not populated yet
+        const { data: viewPeriods } = await supabase
+            .from("budget_performance_summary")
+            .select("period_start_date, period_end_date")
+            .order("period_start_date", { ascending: false });
+            
+        if (viewPeriods) {
+            const seen = new Set();
+            for (const p of viewPeriods) {
+                if (!seen.has(p.period_start_date)) {
+                    seen.add(p.period_start_date);
+                    uniquePeriods.push({ start: p.period_start_date, end: p.period_end_date });
+                }
+            }
         }
     }
+
+    // Ensure Current Period is in the list
+    const current = calculateCurrentPeriod();
+    const hasCurrent = uniquePeriods.some(p => p.start === current.start);
+    
+    if (!hasCurrent) {
+        uniquePeriods.unshift(current);
+    }
+
     return uniquePeriods.slice(0, 5);
 }
 

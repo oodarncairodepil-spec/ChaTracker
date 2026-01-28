@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands, setChatMenuButton } from "@/utils/telegram";
-import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod, getBudgetBreakdown } from "@/lib/reporting";
+import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod, getBudgetBreakdown, calculateCurrentPeriod, getAllSubcategories, getPreviousBudget, saveBudget } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
@@ -172,6 +172,13 @@ async function showPeriodMenu(chatId: number) {
     callback_data: `period:${latest.start}:${latest.end}`
   }]);
 
+  // NEW: Add Budget Button
+  const current = calculateCurrentPeriod();
+  buttons.push([{
+      text: `➕ Add Budget (${formatDate(current.start)} - ${formatDate(current.end)})`,
+      callback_data: "add_budget_start"
+  }]);
+
   // Years
   sortedYears.forEach(year => {
       buttons.push([{ text: `📅 ${year}`, callback_data: `year_periods:${year}` }]);
@@ -335,6 +342,87 @@ async function handleCallbackQuery(query: any) {
   if (action === "menu_pending") {
       await answerCallbackQuery(query.id);
       await showPendingTransactions(chatId);
+      return;
+  }
+
+  if (action === "add_budget_start") {
+      await answerCallbackQuery(query.id, "Loading categories...");
+      const current = calculateCurrentPeriod();
+      
+      const userId = query.from.id;
+      const { data: session } = await supabase.from("bot_sessions").select("id").eq("chat_id", chatId).eq("user_id", userId).single();
+      
+      if (session) {
+          await updateSession(session.id, "browsing_budget", { start: current.start, end: current.end });
+      }
+
+      const allSubs = await getAllSubcategories();
+      const cats = Object.keys(allSubs).sort();
+      
+      const buttons = [];
+      let row: any[] = [];
+      for (const cat of cats) {
+          row.push({ text: cat, callback_data: `add_budget_cat:${cat}` }); 
+          if (row.length === 2) {
+              buttons.push(row);
+              row = [];
+          }
+      }
+      if (row.length > 0) buttons.push(row);
+      
+      await sendTelegramMessage(chatId, `📅 Budget for: ${formatDate(current.start)} - ${formatDate(current.end)}\nSelect Category Group:`, {
+          reply_markup: { inline_keyboard: buttons }
+      });
+      return;
+  }
+
+  if (action === "add_budget_cat") {
+      const catName = parts.slice(1).join(":"); 
+      await answerCallbackQuery(query.id);
+      
+      const allSubs = await getAllSubcategories();
+      const subs = allSubs[catName] || [];
+      
+      const buttons = [];
+      let row: any[] = [];
+      for (const s of subs) {
+          row.push({ text: s.name, callback_data: `add_budget_sub:${s.id}` });
+          if (row.length === 2) {
+              buttons.push(row);
+              row = [];
+          }
+      }
+      if (row.length > 0) buttons.push(row);
+      
+      buttons.push([{ text: "🔙 Back to Groups", callback_data: "add_budget_start" }]);
+
+      await sendTelegramMessage(chatId, `📂 Group: ${catName}\nSelect Subcategory:`, {
+          reply_markup: { inline_keyboard: buttons }
+      });
+      return;
+  }
+
+  if (action === "add_budget_sub") {
+      const subId = parts[1];
+      const userId = query.from.id;
+      const { data: session } = await supabase.from("bot_sessions").select("*").eq("chat_id", chatId).eq("user_id", userId).single();
+      
+      if (!session) return; 
+      
+      const currentStart = session.context?.start || calculateCurrentPeriod().start;
+      const currentEnd = session.context?.end || calculateCurrentPeriod().end;
+      
+      const prevAmount = await getPreviousBudget(subId, currentStart);
+      const fmt = new Intl.NumberFormat('id-ID');
+      
+      await updateSession(session.id, "await_budget_amount", { 
+          subId, 
+          start: currentStart, 
+          end: currentEnd 
+      });
+      
+      await sendTelegramMessage(chatId, `💰 Enter budget amount.\n\nPrevious: Rp ${fmt.format(prevAmount)}\n\nType 0 to set as zero.`);
+      await answerCallbackQuery(query.id);
       return;
   }
 
@@ -629,6 +717,33 @@ async function showSubcategories(chatId: number, txId: string, catId: string) {
 async function handleStateInput(chatId: number, text: string, session: any) {
     const state = session.state;
     const context = session.context;
+
+    if (state === "await_budget_amount") {
+        const amount = parseInt(text.replace(/[^0-9]/g, ""), 10);
+        if (isNaN(amount)) {
+            await sendTelegramMessage(chatId, "Invalid amount. Please enter a number.");
+            return;
+        }
+        
+        const { subId, start, end } = context;
+        // Save
+        const error = await saveBudget(start, end, subId, amount, session.user_id);
+        
+        if (error) {
+            await sendTelegramMessage(chatId, `⚠️ Error saving budget: ${error.message}`);
+        } else {
+            const fmt = new Intl.NumberFormat('id-ID');
+            await sendTelegramMessage(chatId, `✅ Budget saved: Rp ${fmt.format(amount)}`);
+            
+            const buttons = [
+                [{ text: "➕ Set Another Budget", callback_data: "add_budget_start" }],
+                [{ text: "🏁 Finish", callback_data: "menu_period" }]
+            ];
+            await sendTelegramMessage(chatId, "What's next?", { reply_markup: { inline_keyboard: buttons } });
+        }
+        await updateSession(session.id, "idle", {});
+        return;
+    }
 
     if (state === "await_amount") {
         const amount = parseInt(text.replace(/[^0-9]/g, ""), 10);
