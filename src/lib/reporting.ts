@@ -383,64 +383,35 @@ export async function getBudgetBreakdown(start: string, end: string) {
     budgets?.forEach((b: any) => b.subcategory_id && subIds.add(b.subcategory_id));
 
     let subMap = new Map();
-    if (subIds.size > 0) {
-        // Fetch subcategories with category_id
-        let { data: subs } = await supabase.from("subcategories")
-            .select(`id, name, category_id`)
-            .in("id", Array.from(subIds));
+    
+    // Strategy: Load ALL mappings to ensure we find everything (Robust fallback)
+    // A. Load New Schema
+    const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, category_id");
+    const { data: allNewCats } = await supabase.from("categories").select("id, name");
+    
+    // B. Load Legacy Schema
+    const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("id, name, parent_id");
+    const { data: allLegacyCats } = await supabase.from("main_categories").select("id, name");
 
-        // Fallback: Try 'categories_with_hierarchy' for missing subcategories
-        const foundSubIds = new Set(subs?.map((s: any) => s.id) || []);
-        const missingSubIds = Array.from(subIds).filter(id => !foundSubIds.has(id));
+    // Build Category Map (ID -> Name)
+    const catNameMap = new Map();
+    allNewCats?.forEach((c: any) => catNameMap.set(c.id, c.name));
+    allLegacyCats?.forEach((c: any) => catNameMap.set(c.id, c.name));
 
-        if (missingSubIds.length > 0) {
-             const { data: hierSubs } = await supabase.from("categories_with_hierarchy")
-                .select(`id, name, parent_id`)
-                .in("id", missingSubIds);
-             
-             if (hierSubs) {
-                 const mapped = hierSubs.map((s: any) => ({
-                     id: s.id,
-                     name: s.name,
-                     category_id: s.parent_id
-                 }));
-                 subs = [...(subs || []), ...mapped];
-             }
+    // Build Subcategory Map (ID -> { sub, cat })
+    // Prioritize New Schema
+    allNewSubs?.forEach((s: any) => {
+        const catName = catNameMap.get(s.category_id) || "Unknown Category";
+        subMap.set(s.id, { sub: s.name, cat: catName });
+    });
+
+    // Fill gaps with Legacy Schema
+    allLegacySubs?.forEach((s: any) => {
+        if (!subMap.has(s.id)) {
+            const catName = catNameMap.get(s.parent_id) || "Unknown Category";
+            subMap.set(s.id, { sub: s.name, cat: catName });
         }
-
-        // Fetch categories to map names
-        const catIds = new Set();
-        subs?.forEach((s: any) => s.category_id && catIds.add(s.category_id));
-
-        const catMap = new Map();
-        if (catIds.size > 0) {
-            // 1. Try 'categories'
-            const { data: cats } = await supabase.from("categories")
-                .select(`id, name`)
-                .in("id", Array.from(catIds));
-            
-            cats?.forEach((c: any) => catMap.set(c.id, c.name));
-
-            // 2. Try 'main_categories' for missing
-            const foundCatIds = new Set(cats?.map((c: any) => c.id) || []);
-            const missingCatIds = Array.from(catIds).filter((id: any) => !foundCatIds.has(id));
-
-            if (missingCatIds.length > 0) {
-                const { data: mainCats } = await supabase.from("main_categories")
-                    .select(`id, name`)
-                    .in("id", missingCatIds);
-                mainCats?.forEach((c: any) => catMap.set(c.id, c.name));
-            }
-        }
-        
-        subs?.forEach((s: any) => {
-            const catName = catMap.get(s.category_id) || "Unknown Category";
-            subMap.set(s.id, {
-                sub: s.name,
-                cat: catName
-            });
-        });
-    }
+    });
 
     // 4. Aggregate
     const stats = new Map();
