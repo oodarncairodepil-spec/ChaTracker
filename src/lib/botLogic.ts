@@ -81,7 +81,7 @@ async function handleCommand(chatId: number, text: string, session: any) {
       await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🤖💰\nSelect an option below:", {
         reply_markup: {
           keyboard: [
-            [{ text: "Period" }, { text: "Today" }],
+            [{ text: "Today" }, { text: "Period" }],
             [{ text: "Recalculate" }, { text: "Pending" }]
           ],
           resize_keyboard: true,
