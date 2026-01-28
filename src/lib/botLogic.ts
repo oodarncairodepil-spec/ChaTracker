@@ -44,7 +44,7 @@ async function handleMessage(message: any) {
   }
 
   // Commands (cancel flow if command)
-  const isCommand = text.startsWith("/") || ["Period", "Recalculate", "Today"].includes(text);
+  const isCommand = text.startsWith("/") || ["Period", "Recalculate", "Today", "Pending"].includes(text);
   if (isCommand) {
     if (session.state !== "idle") {
         await updateSession(session.id, "idle", {});
@@ -69,7 +69,8 @@ async function handleCommand(chatId: number, text: string, session: any) {
     const isPeriod = command === "/period" || text === "Period";
     const isRecalculate = command === "/recalculate" || text === "Recalculate";
     const isToday = command === "/today" || text === "Today";
-
+    const isPending = command === "/pending" || text === "Pending";
+    
     console.log(`Processing command: ${text} from ${chatId}`);
 
     if (command === "/start") {
@@ -77,14 +78,14 @@ async function handleCommand(chatId: number, text: string, session: any) {
       await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🤖💰\nSelect an option below:", {
         reply_markup: {
           keyboard: [
-            [{ text: "Period" }, { text: "Recalculate" }],
-            [{ text: "Today" }]
+            [{ text: "Period" }, { text: "Today" }],
+            [{ text: "Recalculate" }, { text: "Pending" }]
           ],
           resize_keyboard: true,
           persistent: true
         }
       });
-    } else if (command === "/pending") {
+    } else if (isPending) {
       await showPendingTransactions(chatId);
     } else if (command === "/new") {
       await updateSession(session.id, "await_amount", { type: "manual_entry" });
