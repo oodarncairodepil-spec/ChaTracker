@@ -466,9 +466,9 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
 }
 
 export async function saveBudget(start: string, end: string, subId: string, amount: number, userId: string) {
-    // Upsert budget
+    // 1. Upsert Budget
     
-    // First, check if a budget already exists for this exact criteria
+    // Check if exists
     const { data: existing } = await supabase.from("budgets")
         .select("id")
         .eq("user_id", userId)
@@ -499,7 +499,23 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         error = res.error;
     }
 
-    return error;
+    if (error) return error;
+
+    // 2. Trigger Recalculation (Async)
+    // We don't await this to keep UI responsive, but in serverless we must ensure it runs.
+    // However, recalculateAllSummaries updates 'period_summaries' table based on budgets.
+    
+    // NOTE: recalculateAllSummaries currently reads from 'budget_performance_summary' view
+    // which aggregates from 'budgets' table. So updating 'budgets' table first is correct.
+    
+    // We should run recalculate for this specific period to update 'period_summaries'
+    // But our function recalculateAllSummaries does ALL periods.
+    // Ideally we filter, but for now we just call it.
+    
+    // We need to wait for it here because Vercel/Serverless might kill the process.
+    await recalculateAllSummaries();
+
+    return null;
 }
 export async function getBudgetBreakdown(start: string, end: string) {
     // Ensure dates are YYYY-MM-DD
