@@ -467,23 +467,37 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
 
 export async function saveBudget(start: string, end: string, subId: string, amount: number, userId: string) {
     // Upsert budget
-    // Need to get category info first to populate denormalized fields if any
-    // For now, we assume 'subcategory_id' is enough for uniqueness/FK if schema allows
-    // But budgets table has 'period_start_date' etc.
-
-    // Note: The budgets table schema from user input earlier:
-    // period_start_date, period_end_date, subcategory_id, budgeted_amount, user_id, ...
     
-    const { error } = await supabase.from("budgets").upsert({
-        user_id: userId,
-        period_start_date: start,
-        period_end_date: end,
-        subcategory_id: subId,
-        budgeted_amount: amount,
-        period_type: "monthly",
-        // category_name: ... // Optional, if we want to denormalize
-        updated_at: new Date().toISOString()
-    }, { onConflict: 'user_id, period_start_date, subcategory_id' }); // Assuming unique constraint exists
+    // First, check if a budget already exists for this exact criteria
+    const { data: existing } = await supabase.from("budgets")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("period_start_date", start)
+        .eq("subcategory_id", subId)
+        .single();
+
+    let error;
+
+    if (existing) {
+        // Update
+        const res = await supabase.from("budgets").update({
+            budgeted_amount: amount,
+            updated_at: new Date().toISOString()
+        }).eq("id", existing.id);
+        error = res.error;
+    } else {
+        // Insert
+        const res = await supabase.from("budgets").insert({
+            user_id: userId,
+            period_start_date: start,
+            period_end_date: end,
+            subcategory_id: subId,
+            budgeted_amount: amount,
+            period_type: "monthly",
+            updated_at: new Date().toISOString()
+        });
+        error = res.error;
+    }
 
     return error;
 }
