@@ -747,7 +747,12 @@ async function handleStateInput(chatId: number, text: string, session: any) {
         const error = await saveBudget(start, end, subId, amount, session.user_id);
         
         if (error) {
-            await sendTelegramMessage(chatId, `⚠️ Error saving budget: ${error.message}`);
+            // Check if it's the specific UUID error message from saveBudget validation
+            if (error.message && error.message.includes("Invalid Subcategory ID")) {
+                 await sendTelegramMessage(chatId, `⚠️ Error: ${error.message}`);
+            } else {
+                 await sendTelegramMessage(chatId, `⚠️ Error saving budget: ${error.message}`);
+            }
         } else {
             const fmt = new Intl.NumberFormat('id-ID');
             await sendTelegramMessage(chatId, `✅ Budget saved: Rp ${fmt.format(amount)}`);
