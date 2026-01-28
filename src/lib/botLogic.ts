@@ -75,6 +75,9 @@ async function handleCommand(chatId: number, text: string, session: any) {
 
     if (command === "/start") {
       await updateSession(session.id, "idle", {});
+      // Ensure default menu button is visible
+      await setChatMenuButton(chatId);
+      
       await sendTelegramMessage(chatId, "Welcome to WalleTracker! 🤖💰\nSelect an option below:", {
         reply_markup: {
           keyboard: [
