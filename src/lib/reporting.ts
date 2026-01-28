@@ -385,8 +385,8 @@ export async function getBudgetBreakdown(start: string, end: string) {
     let subMap = new Map();
     
     // Strategy: Load ALL mappings to ensure we find everything (Robust fallback)
-    // A. Load New Schema
-    const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, category_id");
+    // A. Load New Schema (and check for legacy columns like main_category_id)
+    const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, category_id, main_category_id");
     const { data: allNewCats } = await supabase.from("categories").select("id, name");
     
     // B. Load Legacy Schema
@@ -401,7 +401,8 @@ export async function getBudgetBreakdown(start: string, end: string) {
     // Build Subcategory Map (ID -> { sub, cat })
     // Prioritize New Schema
     allNewSubs?.forEach((s: any) => {
-        const catName = catNameMap.get(s.category_id) || "Unknown Category";
+        const catId = s.category_id || s.main_category_id;
+        const catName = catNameMap.get(catId) || "Unknown Category";
         subMap.set(s.id, { sub: s.name, cat: catName });
     });
 
