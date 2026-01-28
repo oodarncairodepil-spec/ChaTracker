@@ -240,6 +240,9 @@ async function showPeriodStats(chatId: number, start: string, end: string) {
           [
               { text: "📉 View Expenses", callback_data: `list_tx:${start}:${end}:expense:0` },
               { text: "💰 View Income", callback_data: `list_tx:${start}:${end}:income:0` }
+          ],
+          [
+              { text: "🔄 Recalculate This Period", callback_data: `recalc_period:${start}:${end}` }
           ]
       ]
   };
@@ -321,6 +324,14 @@ async function handleCallbackQuery(query: any) {
       
       await answerCallbackQuery(query.id, "Loading list...");
       await listTransactions(chatId, start, end, type, page);
+      return;
+  }
+  if (action === "recalc_period") {
+      await answerCallbackQuery(query.id, "Recalculating...");
+      await recalculateAllSummaries();
+      const start = parts[1];
+      const end = parts[2];
+      await showPeriodStats(chatId, start, end);
       return;
   }
   const id = parts[1]; // usually transaction_id
