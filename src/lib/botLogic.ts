@@ -403,7 +403,11 @@ async function handleCallbackQuery(query: any) {
   }
 
   if (action === "add_budget_sub") {
+      await answerCallbackQuery(query.id);
       const subId = parts[1];
+      // Note: subId might be '8434931938' which is NOT a UUID if coming from older data or some misconfiguration.
+      // But the schema expects UUID.
+      
       const userId = query.from.id;
       const { data: session } = await supabase.from("bot_sessions").select("*").eq("chat_id", chatId).eq("user_id", userId).single();
       
@@ -422,7 +426,6 @@ async function handleCallbackQuery(query: any) {
       });
       
       await sendTelegramMessage(chatId, `💰 Enter budget amount.\n\nPrevious: Rp ${fmt.format(prevAmount)}\n\nType 0 to set as zero.`);
-      await answerCallbackQuery(query.id);
       return;
   }
 
