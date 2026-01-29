@@ -472,7 +472,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
     // 0. Validate UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!subId || !uuidRegex.test(subId)) {
-        return { message: `Invalid Subcategory ID: ${subId}. Please restart the process.` };
+        return { error: { message: `Invalid Subcategory ID: ${subId}. Please restart the process.` }, previousAmount: 0 };
     }
 
     // 1. Get subcategory info to populate required fields
@@ -483,7 +483,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         .single();
     
     if (!subData) {
-        return { message: `Subcategory not found: ${subId}` };
+        return { error: { message: `Subcategory not found: ${subId}` }, previousAmount: 0 };
     }
 
     // Get category info from main_categories table
@@ -494,7 +494,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         .single();
 
     if (!catData) {
-        return { message: `Category not found for subcategory` };
+        return { error: { message: `Category not found for subcategory` }, previousAmount: 0 };
     }
 
     // 2. Check if budget exists
