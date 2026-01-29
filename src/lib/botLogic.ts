@@ -714,10 +714,16 @@ async function handleCallbackQuery(query: any) {
     await sendTelegramMessage(chatId, `Set to ${direction.toUpperCase()}. Now enter Merchant name:`);
     await answerCallbackQuery(query.id);
   } else if (action === "ingest_process") {
-    const ingestId = parts[1];
-    console.log(`[DEBUG] Processing ingested transaction: ${ingestId}`);
-    await answerCallbackQuery(query.id);
-    await showCategoriesForIngested(chatId, ingestId);
+    try {
+      const ingestId = parts[1];
+      console.log(`[DEBUG] Processing ingested transaction: ${ingestId}`);
+      await answerCallbackQuery(query.id);
+      await showCategoriesForIngested(chatId, ingestId);
+    } catch (error) {
+      console.error("[ERROR] ingest_process failed:", error);
+      await answerCallbackQuery(query.id, "Error occurred");
+      await sendTelegramMessage(chatId, `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   } else if (action === "ingest_skip") {
     const ingestId = parts[1];
     await supabase.from("ingest_transactions").delete().eq("id", ingestId);
