@@ -177,7 +177,13 @@ async function showPeriodMenu(chatId: number) {
   buttons.push([{
       text: `➕ Add Budget (${formatDate(current.start)} - ${formatDate(current.end)})`,
       callback_data: "add_budget_start"
-  }]);
+    }]);
+
+  // NEW: Show Fund Balances Button
+  buttons.push([{
+      text: `💰 Fund Balances`,
+      callback_data: "show_funds"
+    }]);
 
   // Years
   sortedYears.forEach(year => {
@@ -222,6 +228,26 @@ function formatDate(dateStr: string): string {
     } catch (e) {
         return dateStr;
     }
+}
+
+async function showFundBalances(chatId: number) {
+  const { data: funds } = await supabase.from("funds").select("*").order("name");
+  
+  if (!funds || funds.length === 0) {
+    await sendTelegramMessage(chatId, "💰 No funds found.");
+    return;
+  }
+  
+  const fmt = new Intl.NumberFormat('id-ID');
+  let msg = "💰 <b>Fund Balances</b>\n\n";
+  
+  for (const fund of funds) {
+    msg += `<b>${fund.name}</b>\n`;
+    msg += `Balance: Rp ${fmt.format(fund.current_balance)}\n`;
+    msg += `--------------------\n`;
+  }
+  
+  await sendTelegramMessage(chatId, msg);
 }
 
 async function showPeriodStats(chatId: number, start: string, end: string) {
@@ -386,7 +412,13 @@ async function handleCallbackQuery(query: any) {
       return;
     }
 
-  if (action === "add_budget_cat") {
+    if (action === "show_funds") {
+      await answerCallbackQuery(query.id, "Loading fund balances...");
+      await showFundBalances(chatId);
+      return;
+    }
+
+    if (action === "add_budget_cat") {
       const catName = parts.slice(1).join(":"); 
       await answerCallbackQuery(query.id);
       
