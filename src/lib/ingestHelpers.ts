@@ -103,7 +103,7 @@ export async function processIngestedTransaction(chatId: number, messageId: numb
         category: catId !== "skip" ? catId : null,
         subcategory: subId !== "skip" ? subId : null,
         type: type,
-        status: "completed",
+        status: "paid", // As requested by user
         date: ingestTx.happened_at ? ingestTx.happened_at.split('T')[0] : new Date().toISOString().split('T')[0],
         source_of_funds_id: fundId,
         happened_at: ingestTx.happened_at,
