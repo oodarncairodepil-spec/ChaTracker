@@ -89,6 +89,17 @@ export async function getTodaySummary() {
     };
 }
 
+export async function getLast10Transactions() {
+    const { data: txs } = await supabase
+        .from("transactions")
+        .select("*")
+        .in("status", ["completed", "paid"])
+        .order("date", { ascending: false })
+        .limit(10);
+    
+    return txs || [];
+}
+
 export function calculateCurrentPeriod() {
     const today = new Date();
     const day = today.getDate();

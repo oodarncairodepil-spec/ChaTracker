@@ -928,12 +928,28 @@ async function showBudget(chatId: number) {
 }
 
 async function showToday(chatId: number) {
-    const summary = await getTodaySummary();
-    let msg = `<b>Today's Spending</b>\nTotal: Rp ${new Intl.NumberFormat('id-ID').format(summary.total)}\n\n`;
-    if (summary.lines.length === 0) {
-        msg += "No spending today yet.";
-    } else {
-        msg += summary.lines.join("\n");
+    const txs = await getLast10Transactions();
+    
+    if (txs.length === 0) {
+        await sendTelegramMessage(chatId, "📋 <b>Last 10 Transactions</b>\n\nNo transactions found.");
+        return;
     }
+    
+    const fmt = new Intl.NumberFormat('id-ID');
+    let msg = "📋 <b>Last 10 Transactions</b>\n\n";
+    
+    txs.forEach((tx: any, index: number) => {
+        const date = tx.date || (tx.happened_at ? tx.happened_at.split('T')[0] : "Unknown");
+        const formattedDate = formatDate(date);
+        const typeIcon = tx.direction === "credit" ? "💰" : "💸";
+        const statusIcon = tx.status === "completed" ? "✅" : tx.status === "paid" ? "💵" : "⏳";
+        
+        msg += `<b>${index + 1}. ${typeIcon} ${formattedDate}</b>\n`;
+        msg += `Amount: Rp ${fmt.format(tx.amount)}\n`;
+        msg += `Description: ${tx.description || 'No description'}\n`;
+        msg += `Status: ${statusIcon} ${tx.status}\n`;
+        msg += `--------------------\n`;
+    });
+    
     await sendTelegramMessage(chatId, msg);
 }
