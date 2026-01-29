@@ -25,11 +25,11 @@ export async function getCategories() {
 
 // Helper to get subcategories - works with both schemas
 export async function getSubcategories(categoryId: string) {
-  // Try new subcategories table
+  // Try new subcategories table with main_category_id
   let { data: subcategories } = await supabase
     .from("subcategories")
     .select("*")
-    .eq("category_id", categoryId)
+    .eq("main_category_id", categoryId)
     .order("name");
   
   if (!subcategories || subcategories.length === 0) {
