@@ -390,13 +390,28 @@ async function handleCallbackQuery(query: any) {
       const catName = parts.slice(1).join(":"); 
       await answerCallbackQuery(query.id);
       
+      const userId = query.from.id;
+      const { data: session } = await supabase.from("bot_sessions").select("*").eq("chat_id", chatId).eq("user_id", userId).single();
+      
+      const currentStart = session?.context?.start || calculateCurrentPeriod().start;
+      const currentEnd = session?.context?.end || calculateCurrentPeriod().end;
+      
       const allSubs = await getAllSubcategories();
       const subs = allSubs[catName] || [];
+      
+      const { data: budgets } = await supabase.from("budgets")
+          .select("subcategory_id")
+          .eq("period_start_date", currentStart)
+          .eq("period_end_date", currentEnd);
+      
+      const budgetedSubs = new Set(budgets?.map((b: any) => b.subcategory_id) || []);
       
       const buttons = [];
       let row: any[] = [];
       for (const s of subs) {
-          row.push({ text: s.name, callback_data: `add_budget_sub:${s.id}` });
+          const isBudgeted = budgetedSubs.has(s.id);
+          const icon = isBudgeted ? "✅ " : "  ";
+          row.push({ text: `${icon}${s.name}`, callback_data: `add_budget_sub:${s.id}` });
           if (row.length === 2) {
               buttons.push(row);
               row = [];
@@ -405,12 +420,12 @@ async function handleCallbackQuery(query: any) {
       if (row.length > 0) buttons.push(row);
       
       buttons.push([{ text: "🔙 Back to Groups", callback_data: "add_budget_start" }]);
-
+      
       await sendTelegramMessage(chatId, `📂 Group: ${catName}\nSelect Subcategory:`, {
           reply_markup: { inline_keyboard: buttons }
       });
       return;
-  }
+    }
 
   if (action === "add_budget_sub") {
       await answerCallbackQuery(query.id);
