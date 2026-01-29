@@ -88,6 +88,9 @@ async function handleCommand(chatId: number, text: string, session: any) {
             [
               { text: "🔄 Recalculate", callback_data: "menu_recalculate" },
               { text: "⏳ Pending", callback_data: "menu_pending" }
+            ],
+            [
+              { text: "💰 Fund Balances", callback_data: "show_funds" }
             ]
           ]
         }
@@ -177,12 +180,6 @@ async function showPeriodMenu(chatId: number) {
   buttons.push([{
       text: `➕ Add Budget (${formatDate(current.start)} - ${formatDate(current.end)})`,
       callback_data: "add_budget_start"
-    }]);
-
-  // NEW: Show Fund Balances Button
-  buttons.push([{
-      text: `💰 Fund Balances`,
-      callback_data: "show_funds"
     }]);
 
   // Years
