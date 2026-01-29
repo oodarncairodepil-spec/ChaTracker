@@ -713,9 +713,7 @@ async function showSubcategories(chatId: number, txId: string, catId: string) {
   const subs = await getSubcategories(catId);
   
   const { data: budgets } = await supabase.from("budgets")
-      .select("subcategory_id, budgeted_amount")
-      .eq("period_start_date", calculateCurrentPeriod().start)
-      .eq("period_end_date", calculateCurrentPeriod().end);
+      .select("subcategory_id, budgeted_amount");
   
   const budgetedSubs = new Set(budgets?.map((b: any) => b.subcategory_id) || []);
   
