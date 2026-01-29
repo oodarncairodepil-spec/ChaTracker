@@ -468,7 +468,7 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
 // Bot user UUID to use for all budgets (since we use Telegram IDs which are numeric, not UUIDs)
 const BOT_USER_ID = "354ef27f-64ae-4c6a-8833-2ee14885331e";
 
-export async function saveBudget(start: string, end: string, subId: string, amount: number, telegramUserId: string) {
+export async function saveBudget(start: string, end: string, subId: string, amount: number, telegramUserId: string): Promise<{ error: any; previousAmount: number }> {
     // 0. Validate UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!subId || !uuidRegex.test(subId)) {
@@ -527,11 +527,13 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         error = res.error;
     }
 
-    if (error) return error;
+    if (error) return { error, previousAmount: 0 };
 
     await recalculateAllSummaries();
 
-    return null;
+    const prevAmount = await getPreviousBudget(subId, start);
+
+    return { error: null, previousAmount: prevAmount } as any;
 }
 export async function getBudgetBreakdown(start: string, end: string) {
     // Ensure dates are YYYY-MM-DD
