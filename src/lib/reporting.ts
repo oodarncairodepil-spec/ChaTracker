@@ -2,71 +2,71 @@ import { supabase } from "./supabase";
 import { startOfMonth, endOfMonth, format } from "date-fns";
 
 export async function getMonthlyReport(date: Date = new Date()) {
-  const start = startOfMonth(date).toISOString();
-  const end = endOfMonth(date).toISOString();
+    const start = startOfMonth(date).toISOString();
+    const end = endOfMonth(date).toISOString();
 
-  // 1. Get Expenses (Debit, Completed)
-  const { data: expenses } = await supabase
-    .from("transactions")
-    .select(`
+    // 1. Get Expenses (Debit, Completed)
+    const { data: expenses } = await supabase
+        .from("transactions")
+        .select(`
       amount,
       category_id,
       categories (name),
       subcategory_id,
       subcategories (name)
     `)
-    .eq("direction", "debit")
-    .eq("status", "completed")
-    .gte("happened_at", start)
-    .lte("happened_at", end);
+        .eq("direction", "debit")
+        .eq("status", "completed")
+        .gte("happened_at", start)
+        .lte("happened_at", end);
 
-  // 2. Get Budgets
-  const { data: budgets } = await supabase
-    .from("budgets")
-    .select(`
+    // 2. Get Budgets
+    const { data: budgets } = await supabase
+        .from("budgets")
+        .select(`
       amount,
       category_id,
       categories (name),
       subcategory_id,
       subcategories (name)
     `)
-    .eq("month", format(date, "yyyy-MM-01"));
+        .eq("month", format(date, "yyyy-MM-01"));
 
-  // 3. Aggregate
-  const categoryStats: Record<string, { spent: number; budget: number; name: string }> = {};
+    // 3. Aggregate
+    const categoryStats: Record<string, { spent: number; budget: number; name: string }> = {};
 
-  // Sum Expenses
-  expenses?.forEach((tx: any) => {
-    const catName = tx.categories?.name || "Uncategorized";
-    if (!categoryStats[catName]) {
-      categoryStats[catName] = { spent: 0, budget: 0, name: catName };
-    }
-    categoryStats[catName].spent += tx.amount;
-  });
+    // Sum Expenses
+    expenses?.forEach((tx: any) => {
+        const catName = tx.categories?.name || "Uncategorized";
+        if (!categoryStats[catName]) {
+            categoryStats[catName] = { spent: 0, budget: 0, name: catName };
+        }
+        categoryStats[catName].spent += tx.amount;
+    });
 
-  // Sum Budgets
-  budgets?.forEach((b: any) => {
-    const catName = b.categories?.name || "Uncategorized";
-    if (!categoryStats[catName]) {
-      categoryStats[catName] = { spent: 0, budget: 0, name: catName };
-    }
-    categoryStats[catName].budget += b.amount;
-  });
+    // Sum Budgets
+    budgets?.forEach((b: any) => {
+        const catName = b.categories?.name || "Uncategorized";
+        if (!categoryStats[catName]) {
+            categoryStats[catName] = { spent: 0, budget: 0, name: catName };
+        }
+        categoryStats[catName].budget += b.amount;
+    });
 
-  return {
-    month: format(date, "MMMM yyyy"),
-    stats: Object.values(categoryStats),
-    totalSpent: Object.values(categoryStats).reduce((sum, item) => sum + item.spent, 0),
-    totalBudget: Object.values(categoryStats).reduce((sum, item) => sum + item.budget, 0),
-  };
+    return {
+        month: format(date, "MMMM yyyy"),
+        stats: Object.values(categoryStats),
+        totalSpent: Object.values(categoryStats).reduce((sum, item) => sum + item.spent, 0),
+        totalBudget: Object.values(categoryStats).reduce((sum, item) => sum + item.budget, 0),
+    };
 }
 
 export async function getTodaySummary() {
     const start = new Date();
-    start.setHours(0,0,0,0);
+    start.setHours(0, 0, 0, 0);
     const end = new Date();
-    end.setHours(23,59,59,999);
-    
+    end.setHours(23, 59, 59, 999);
+
     const { data: txs } = await supabase
         .from("transactions")
         .select("amount, categories(name), merchant")
@@ -74,15 +74,15 @@ export async function getTodaySummary() {
         .eq("status", "completed")
         .gte("happened_at", start.toISOString())
         .lte("happened_at", end.toISOString());
-        
+
     let total = 0;
     const summary: string[] = [];
-    
+
     txs?.forEach((tx: any) => {
         total += tx.amount;
         summary.push(`- ${tx.categories?.name || 'Uncat'}: ${new Intl.NumberFormat('id-ID').format(tx.amount)} (${tx.merchant})`);
     });
-    
+
     return {
         total,
         lines: summary
@@ -96,8 +96,22 @@ export async function getLast10Transactions() {
         .in("status", ["completed", "paid"])
         .order("date", { ascending: false })
         .limit(10);
-    
-    return txs || [];
+
+    if (!txs || txs.length === 0) return [];
+
+    // Fetch funds table directly (this is the actual table being used)
+    const { data: funds } = await supabase.from("funds").select("id, name");
+
+    const sourceMap = new Map();
+    funds?.forEach((f: any) => sourceMap.set(f.id, f.name));
+
+    // Attach source name using source_of_funds_id column
+    txs.forEach((t: any) => {
+        const sourceId = t.source_of_funds_id;
+        t.source_name = sourceMap.get(sourceId) || "Unknown";
+    });
+
+    return txs;
 }
 
 export function calculateCurrentPeriod() {
@@ -152,7 +166,7 @@ export async function getAvailablePeriods() {
             .from("budget_performance_summary")
             .select("period_start_date, period_end_date")
             .order("period_start_date", { ascending: false });
-            
+
         if (viewPeriods) {
             const seen = new Set();
             for (const p of viewPeriods) {
@@ -167,7 +181,7 @@ export async function getAvailablePeriods() {
     // Ensure Current Period is in the list
     const current = calculateCurrentPeriod();
     const hasCurrent = uniquePeriods.some(p => p.start === current.start);
-    
+
     if (!hasCurrent) {
         uniquePeriods.unshift(current);
     }
@@ -252,7 +266,7 @@ export async function getPeriodStats(start: string, end: string) {
 export async function recalculateAllSummaries() {
     // 1. Get unique periods from the View
     const { data: viewRows, error } = await supabase.from("budget_performance_summary").select("*");
-    
+
     if (error) return { error: error.message };
     if (!viewRows) return { count: 0 };
 
@@ -291,10 +305,10 @@ export async function recalculateAllSummaries() {
         // Select * to avoid missing column errors if description/merchant schema varies
         const { data: txs } = await supabase.from("transactions")
             .select("*")
-            .in("status", ["completed", "paid"]) 
+            .in("status", ["completed", "paid"])
             .gte("date", p.start)
             .lte("date", p.end);
-        
+
         let actualExpense = 0;
         let actualIncome = 0;
 
@@ -302,7 +316,7 @@ export async function recalculateAllSummaries() {
             // Check direction OR type
             const isExpense = t.direction === 'debit' || t.type === 'expense';
             const isIncome = t.direction === 'credit' || t.type === 'income';
-            
+
             // Check for Internal Transfer
             const desc = (t.description || t.merchant || "").toLowerCase();
             const isInternal = desc.includes("internal transfer");
@@ -328,7 +342,7 @@ export async function recalculateAllSummaries() {
             total_actual_income: actualIncome,
             last_recalculated_at: new Date().toISOString()
         }, { onConflict: 'user_id, period_start_date, period_end_date' });
-        
+
         count++;
     }
 
@@ -337,7 +351,7 @@ export async function recalculateAllSummaries() {
 
 export async function getTransactionsForPeriod(start: string, end: string, type: 'expense' | 'income', page: number = 0) {
     const PAGE_SIZE = 10;
-    
+
     // Fetch ALL matching transactions for the period (without pagination first)
     const { data: allTxs, error } = await supabase
         .from("transactions")
@@ -354,7 +368,7 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
 
     // Fetch Source of Funds map
     let { data: sources, error: sourceError } = await supabase.from("source_of_funds").select("id, name");
-    
+
     // Fallback: Try 'funds' table if 'source_of_funds' is empty or failed
     if (sourceError || !sources || sources.length === 0) {
         const { data: funds } = await supabase.from("funds").select("id, name");
@@ -383,10 +397,10 @@ export async function getTransactionsForPeriod(start: string, end: string, type:
         // Check both possible column names
         const sourceId = t.source_of_funds_id || t.source_of_fund_id;
         t.source_name = sourceMap.get(sourceId) || "Unknown";
-        
+
         // Debug first item
         if (filteredTxs.indexOf(t) === 0) {
-             console.log(`Debug Tx: ID=${t.id}, SourceID=${sourceId}, MapHas=${sourceMap.has(sourceId)}`);
+            console.log(`Debug Tx: ID=${t.id}, SourceID=${sourceId}, MapHas=${sourceMap.has(sourceId)}`);
         }
     });
 
@@ -412,7 +426,7 @@ export async function getAllSubcategories() {
     // A. Load New Schema (and check for legacy columns like main_category_id)
     const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, main_category_id");
     const { data: allNewCats } = await supabase.from("categories").select("id, name");
-    
+
     // B. Load Legacy Schema (View)
     const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("subcategory_id, subcategory_name, main_category_id, main_category_name");
     const { data: allLegacyCats } = await supabase.from("main_categories").select("id, name");
@@ -442,12 +456,12 @@ export async function getAllSubcategories() {
     // 2. From Legacy View (categories_with_hierarchy)
     allLegacySubs?.forEach((s: any) => {
         const catName = s.main_category_name || catNameMap.get(s.main_category_id) || "Unknown Category";
-        add(catName, { 
-            id: s.subcategory_id, 
+        add(catName, {
+            id: s.subcategory_id,
             name: s.subcategory_name || s.name // view might have 'name' or 'subcategory_name'
         });
     });
-    
+
     // Sort subcategories by name
     Object.keys(grouped).forEach(k => {
         grouped[k].sort((a, b) => a.name.localeCompare(b.name));
@@ -461,7 +475,7 @@ export async function getPreviousBudget(subId: string, currentStart: string) {
     // Assuming monthly periods... roughly -1 month
     const start = new Date(currentStart);
     start.setMonth(start.getMonth() - 1);
-    
+
     // Or just query the latest budget for this subId that is BEFORE currentStart
     const { data: budgets } = await supabase.from("budgets")
         .select("budgeted_amount")
@@ -492,7 +506,7 @@ export async function saveBudget(start: string, end: string, subId: string, amou
         .select("id, name, main_category_id")
         .eq("id", subId)
         .single();
-    
+
     if (!subData) {
         return { error: { message: `Subcategory not found: ${subId}` }, previousAmount: 0 };
     }
@@ -555,7 +569,7 @@ export async function getBudgetBreakdown(start: string, end: string) {
     // Note: 'category' column in transactions table holds the subcategory_id
     // Filter by type='expense' OR direction='debit' to be safe
     const { data: expenses } = await supabase.from("transactions")
-        .select(`amount, category`) 
+        .select(`amount, category`)
         .gte("date", cleanStart)
         .lte("date", cleanEnd)
         .or('direction.eq.debit,type.eq.expense')
@@ -573,14 +587,14 @@ export async function getBudgetBreakdown(start: string, end: string) {
     budgets?.forEach((b: any) => b.subcategory_id && subIds.add(b.subcategory_id));
 
     let subMap = new Map();
-    
+
     // Strategy: Load ALL mappings to ensure we find everything (Robust fallback)
     // A. Load New Schema (and check for legacy columns like main_category_id)
     // Note: Based on inspection, 'subcategories' table has 'main_category_id' but NOT 'category_id'.
     // We select both to be safe, but we know 'main_category_id' is the one.
     const { data: allNewSubs } = await supabase.from("subcategories").select("id, name, main_category_id");
     const { data: allNewCats } = await supabase.from("categories").select("id, name");
-    
+
     // B. Load Legacy Schema (View)
     // Note: 'categories_with_hierarchy' has 'subcategory_id' (which is the ID), 'subcategory_name', 'main_category_id', 'main_category_name'
     const { data: allLegacySubs } = await supabase.from("categories_with_hierarchy").select("subcategory_id, subcategory_name, main_category_id, main_category_name");
@@ -592,7 +606,7 @@ export async function getBudgetBreakdown(start: string, end: string) {
     allLegacyCats?.forEach((c: any) => catNameMap.set(c.id, c.name));
 
     // Build Subcategory Map (ID -> { sub, cat })
-    
+
     // 1. From New Schema
     allNewSubs?.forEach((s: any) => {
         // s.category_id might not exist, use main_category_id
@@ -607,9 +621,9 @@ export async function getBudgetBreakdown(start: string, end: string) {
         if (!subMap.has(s.subcategory_id)) {
             // Use explicit name from view if available
             const catName = s.main_category_name || catNameMap.get(s.main_category_id) || "Unknown Category";
-            subMap.set(s.subcategory_id, { 
+            subMap.set(s.subcategory_id, {
                 sub: s.subcategory_name || s.name, // view might have 'name' or 'subcategory_name'
-                cat: catName 
+                cat: catName
             });
         }
     });
@@ -623,19 +637,19 @@ export async function getBudgetBreakdown(start: string, end: string) {
     // Process Budgets
     budgets?.forEach((b: any) => {
         if (!b.subcategory_id) return;
-        
+
         // Use map or fallback to category_name from budget table
         let info = subMap.get(b.subcategory_id);
         if (!info && b.category_name) {
-             info = { cat: "Budget", sub: b.category_name };
-             // Update map for future lookups (e.g. expenses matching this ID)
-             subMap.set(b.subcategory_id, info);
+            info = { cat: "Budget", sub: b.category_name };
+            // Update map for future lookups (e.g. expenses matching this ID)
+            subMap.set(b.subcategory_id, info);
         }
-        
+
         const cat = info?.cat || "Unknown";
         const sub = info?.sub || "Unknown";
         const key = getKey(cat, sub);
-        
+
         if (!stats.has(key)) stats.set(key, { cat, sub, budget: 0, actual: 0 });
         stats.get(key).budget += b.budgeted_amount;
     });
@@ -645,7 +659,7 @@ export async function getBudgetBreakdown(start: string, end: string) {
         if (!e.category) return;
         const info = subMap.get(e.category) || { cat: "Unknown", sub: "Unknown" };
         const key = getKey(info.cat, info.sub);
-        
+
         if (!stats.has(key)) stats.set(key, { cat: info.cat, sub: info.sub, budget: 0, actual: 0 });
         stats.get(key).actual += e.amount;
     });
