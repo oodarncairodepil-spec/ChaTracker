@@ -944,8 +944,9 @@ async function showToday(chatId: number) {
 
     // Use merchant or description, fallback to 'No Desc'
     const description = tx.merchant || tx.description || 'No Desc';
+    const source = tx.source_name || tx.source || 'Unknown';
 
-    msg += `${formattedDate} Rp ${fmt.format(tx.amount)} | ${description}\n`;
+    msg += `${formattedDate} ${fmt.format(tx.amount)} | ${description} | ${source}\n`;
   });
 
   await sendTelegramMessage(chatId, msg);
