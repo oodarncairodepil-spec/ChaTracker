@@ -355,14 +355,24 @@ async function handleCallbackQuery(query: any) {
       if (session) {
           await updateSession(session.id, "browsing_budget", { start: current.start, end: current.end });
       }
-
+      
       const allSubs = await getAllSubcategories();
       const cats = Object.keys(allSubs).sort();
+      
+      const { data: budgets } = await supabase.from("budgets")
+          .select("subcategory_id, budgeted_amount")
+          .eq("period_start_date", current.start)
+          .eq("period_end_date", current.end);
+      
+      const budgetedSubs = new Set(budgets?.map((b: any) => b.subcategory_id) || []);
       
       const buttons = [];
       let row: any[] = [];
       for (const cat of cats) {
-          row.push({ text: cat, callback_data: `add_budget_cat:${cat}` }); 
+          const subs = allSubs[cat] || [];
+          const budgetedCount = subs.filter((s: any) => budgetedSubs.has(s.id)).length;
+          const status = budgetedCount > 0 ? ` ${budgetedCount}/${subs.length}` : ` 0/${subs.length}`;
+          row.push({ text: `${cat}${status}`, callback_data: `add_budget_cat:${cat}` }); 
           if (row.length === 2) {
               buttons.push(row);
               row = [];
@@ -374,7 +384,7 @@ async function handleCallbackQuery(query: any) {
           reply_markup: { inline_keyboard: buttons }
       });
       return;
-  }
+    }
 
   if (action === "add_budget_cat") {
       const catName = parts.slice(1).join(":"); 
@@ -702,11 +712,20 @@ async function showCategories(chatId: number, txId: string) {
 async function showSubcategories(chatId: number, txId: string, catId: string) {
   const subs = await getSubcategories(catId);
   
+  const { data: budgets } = await supabase.from("budgets")
+      .select("subcategory_id, budgeted_amount")
+      .eq("period_start_date", calculateCurrentPeriod().start)
+      .eq("period_end_date", calculateCurrentPeriod().end);
+  
+  const budgetedSubs = new Set(budgets?.map((b: any) => b.subcategory_id) || []);
+  
   const buttons = [];
   if (subs) {
       let row = [];
       for (const s of subs) {
-          row.push({ text: s.name, callback_data: `set_sub:${txId}:${s.id}` });
+          const isBudgeted = budgetedSubs.has(s.id);
+          const icon = isBudgeted ? "✅ " : "  ";
+          row.push({ text: `${icon}${s.name}`, callback_data: `set_sub:${txId}:${s.id}` });
           if (row.length === 2) {
               buttons.push(row);
               row = [];
@@ -716,7 +735,7 @@ async function showSubcategories(chatId: number, txId: string, catId: string) {
   }
   
   buttons.push([{ text: "Skip Subcategory", callback_data: `set_sub:${txId}:skip` }]);
-
+  
   await sendTelegramMessage(chatId, "Select Subcategory:", {
     reply_markup: { inline_keyboard: buttons }
   });
