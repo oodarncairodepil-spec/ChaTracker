@@ -447,6 +447,19 @@ async function handleCallbackQuery(query: any) {
       const currentEnd = session.context?.end || calculateCurrentPeriod().end;
       
       const prevAmount = await getPreviousBudget(subId, currentStart);
+      
+      const { data: currentBudget } = await supabase.from("budgets")
+          .select("budgeted_amount")
+          .eq("period_start_date", currentStart)
+          .eq("period_end_date", currentEnd)
+          .eq("subcategory_id", subId)
+          .maybeSingle();
+      
+      const currentAmount = currentBudget?.budgeted_amount || 0;
+      
+      const { data: subData } = await supabase.from("subcategories").select("name").eq("id", subId).single();
+      const subName = subData?.name || "Subcategory";
+      
       const fmt = new Intl.NumberFormat('id-ID');
       
       await updateSession(session.id, "await_budget_amount", { 
@@ -455,7 +468,7 @@ async function handleCallbackQuery(query: any) {
           end: currentEnd 
       });
       
-      await sendTelegramMessage(chatId, `💰 Enter budget amount.\n\nPrevious: Rp ${fmt.format(prevAmount)}\n\nType 0 to set as zero.`);
+      await sendTelegramMessage(chatId, `💰 Enter budget amount for "${subName}"\n\nPrevious: Rp ${fmt.format(prevAmount)}\nCurrent: Rp ${fmt.format(currentAmount)}\n\nType 0 to set as zero.\nType 1 to set as previous amount.`);
       return;
   }
 
@@ -759,6 +772,30 @@ async function handleStateInput(chatId: number, text: string, session: any) {
     const context = session.context;
 
     if (state === "await_budget_amount") {
+        const trimmedText = text.trim();
+        
+        if (trimmedText === "1") {
+            const { subId, start, end } = context;
+            const prevAmount = await getPreviousBudget(subId, start);
+            const fmt = new Intl.NumberFormat('id-ID');
+            
+            const result = await saveBudget(start, end, subId, prevAmount, session.user_id);
+            
+            if (result.error) {
+                await sendTelegramMessage(chatId, `⚠️ Error saving budget: ${result.error.message}`);
+            } else {
+                await sendTelegramMessage(chatId, `✅ Budget saved: Rp ${fmt.format(prevAmount)}\n\nPrevious: Rp ${fmt.format(result.previousAmount)}`);
+                
+                const buttons = [
+                    [{ text: "➕ Set Another Budget", callback_data: "add_budget_start" }],
+                    [{ text: "🏁 Finish", callback_data: "menu_period" }]
+                ];
+                await sendTelegramMessage(chatId, "What's next?", { reply_markup: { inline_keyboard: buttons } });
+            }
+            await updateSession(session.id, "idle", {});
+            return;
+        }
+        
         const amount = parseInt(text.replace(/[^0-9]/g, ""), 10);
         if (isNaN(amount)) {
             await sendTelegramMessage(chatId, "Invalid amount. Please enter a number.");
