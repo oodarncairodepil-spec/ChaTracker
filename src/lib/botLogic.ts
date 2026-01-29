@@ -82,7 +82,7 @@ async function handleCommand(chatId: number, text: string, session: any) {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "📅 Today", callback_data: "menu_today" },
+              { text: "📋 Last 10 Transactions", callback_data: "menu_today" },
               { text: "📊 Period", callback_data: "menu_period" }
             ],
             [
