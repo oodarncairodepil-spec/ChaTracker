@@ -343,6 +343,8 @@ async function handleCallbackQuery(query: any) {
   const parts = data.split(":");
   const action = parts[0];
 
+  console.log(`[DEBUG] Callback action: ${action}, data: ${data}`);
+
   if (action === "menu_today") {
     await answerCallbackQuery(query.id);
     await showToday(chatId);
@@ -713,6 +715,7 @@ async function handleCallbackQuery(query: any) {
     await answerCallbackQuery(query.id);
   } else if (action === "ingest_process") {
     const ingestId = parts[1];
+    console.log(`[DEBUG] Processing ingested transaction: ${ingestId}`);
     await answerCallbackQuery(query.id);
     await showCategoriesForIngested(chatId, ingestId);
   } else if (action === "ingest_skip") {
