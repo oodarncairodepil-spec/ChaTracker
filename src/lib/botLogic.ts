@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands, setChatMenuButton } from "@/utils/telegram";
 import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod, getBudgetBreakdown, calculateCurrentPeriod, getAllSubcategories, getPreviousBudget, saveBudget, getLast10Transactions } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
+import { showCategoriesForIngested, showSubcategoriesForIngested, showFundsForIngested, processIngestedTransaction } from "@/lib/ingestHelpers";
 
 export async function handleUpdate(update: any) {
   try {
@@ -90,7 +91,8 @@ async function handleCommand(chatId: number, text: string, session: any) {
               { text: "⏳ Pending", callback_data: "menu_pending" }
             ],
             [
-              { text: "💰 Fund Balances", callback_data: "show_funds" }
+              { text: "� Process Ingested", callback_data: "menu_process_ingested" },
+              { text: "�💰 Fund Balances", callback_data: "show_funds" }
             ]
           ]
         }
@@ -365,6 +367,12 @@ async function handleCallbackQuery(query: any) {
   if (action === "menu_pending") {
     await answerCallbackQuery(query.id);
     await showPendingTransactions(chatId);
+    return;
+  }
+
+  if (action === "menu_process_ingested") {
+    await answerCallbackQuery(query.id);
+    await showIngestedTransactions(chatId);
     return;
   }
 
@@ -703,6 +711,33 @@ async function handleCallbackQuery(query: any) {
     await updateSession(sessionId, "await_merchant", newContext);
     await sendTelegramMessage(chatId, `Set to ${direction.toUpperCase()}. Now enter Merchant name:`);
     await answerCallbackQuery(query.id);
+  } else if (action === "ingest_process") {
+    const ingestId = parts[1];
+    await answerCallbackQuery(query.id);
+    await showCategoriesForIngested(chatId, ingestId);
+  } else if (action === "ingest_skip") {
+    const ingestId = parts[1];
+    await supabase.from("ingest_transactions").delete().eq("id", ingestId);
+    await editMessageText(chatId, messageId, "❌ Ingested transaction skipped.");
+    await answerCallbackQuery(query.id, "Skipped");
+  } else if (action === "ingest_cat") {
+    const txId = parts[1];
+    const catId = parts[2];
+    await showSubcategoriesForIngested(chatId, txId, catId);
+    await answerCallbackQuery(query.id);
+  } else if (action === "ingest_sub") {
+    const txId = parts[1];
+    const catId = parts[2];
+    const subId = parts[3];
+    await showFundsForIngested(chatId, txId, catId, subId);
+    await answerCallbackQuery(query.id);
+  } else if (action === "ingest_fund") {
+    const txId = parts[1];
+    const catId = parts[2];
+    const subId = parts[3];
+    const fundId = parts[4];
+    await processIngestedTransaction(chatId, messageId, txId, catId, subId, fundId);
+    await answerCallbackQuery(query.id, "Processing...");
   }
 }
 
@@ -737,6 +772,40 @@ async function showPendingTransactions(chatId: number) {
         [{ text: "✅ Confirm", callback_data: `tx_confirm:${tx.id}` }],
         [{ text: "🏷️ Categorize", callback_data: `tx_cat:${tx.id}` }],
         [{ text: "❌ Reject", callback_data: `tx_reject:${tx.id}` }]
+      ]
+    };
+    await sendTelegramMessage(chatId, text, { reply_markup: keyboard });
+  }
+}
+
+async function showIngestedTransactions(chatId: number) {
+  const { data: txs } = await supabase
+    .from("ingest_transactions")
+    .select("*")
+    .is("category", null) // Only show unprocessed (no category assigned yet)
+    .order("happened_at", { ascending: false })
+    .limit(5);
+
+  if (!txs || txs.length === 0) {
+    await sendTelegramMessage(chatId, "No ingested transactions to process! 🎉");
+    return;
+  }
+
+  for (const tx of txs) {
+    const fmt = new Intl.NumberFormat('id-ID');
+    const direction = tx.direction === 'debit' ? '💸 Expense' : tx.direction === 'credit' ? '💰 Income' : '❓ Unknown';
+
+    const text = `
+📥 <b>Ingested Transaction</b>
+${direction}
+💵 ${tx.currency} ${fmt.format(tx.amount)}
+🏪 ${tx.merchant || "Unknown"}
+📅 ${new Date(tx.happened_at).toLocaleDateString()}
+`;
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: "✅ Process", callback_data: `ingest_process:${tx.id}` }],
+        [{ text: "❌ Skip", callback_data: `ingest_skip:${tx.id}` }]
       ]
     };
     await sendTelegramMessage(chatId, text, { reply_markup: keyboard });
