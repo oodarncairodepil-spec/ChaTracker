@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { sendTelegramMessage, editMessageText, answerCallbackQuery, setMyCommands, setChatMenuButton } from "@/utils/telegram";
-import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod, getBudgetBreakdown, calculateCurrentPeriod, getAllSubcategories, getPreviousBudget, saveBudget } from "@/lib/reporting";
+import { getMonthlyReport, getTodaySummary, getAvailablePeriods, getPeriodStats, recalculateAllSummaries, getTransactionsForPeriod, getBudgetBreakdown, calculateCurrentPeriod, getAllSubcategories, getPreviousBudget, saveBudget, getLast10Transactions } from "@/lib/reporting";
 import { getCategories, getSubcategories } from "@/lib/dbCompatibility";
 
 export async function handleUpdate(update: any) {
