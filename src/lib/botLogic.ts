@@ -946,7 +946,7 @@ async function showToday(chatId: number) {
     const description = tx.merchant || tx.description || 'No Desc';
     const source = tx.source_name || tx.source || 'Unknown';
 
-    msg += `${formattedDate} ${fmt.format(tx.amount)} | ${description} | ${source}\n`;
+    msg += `${formattedDate} ${source} | ${fmt.format(tx.amount)} | ${description}\n`;
   });
 
   await sendTelegramMessage(chatId, msg);
